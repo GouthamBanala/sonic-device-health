@@ -1,4 +1,4 @@
-#! /bin/bash
+ #! /bin/bash
 
 # may have to set GO111MODULE=off
 
