@@ -17,6 +17,60 @@
             "Disable": false,
             "Mimic": false,
             "ActionKnobs": "test actions"
+        },
+        {
+            "Name": "plmgr_plugin_2",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": true,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
+        },
+        {
+            "Name": "plmgr_plugin_3",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": false,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
+        },
+        {
+            "Name": "test_plugin_001",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": false,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
+        },
+        {
+            "Name": "test_plugin_002",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": false,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
+        },
+        {
+            "Name": "test_plugin_001_bad",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": false,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
+        },
+        {
+            "Name": "test_startup_plugin_001",
+            "Type": "dummy_type",
+            "Timeout": 10,
+            "HeartbeatInt": 5,
+            "Disable": false,
+            "Mimic": false,
+            "Act,ionKnobs": "test actions"
         }
     ]
 }

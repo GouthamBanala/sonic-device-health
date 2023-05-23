@@ -122,8 +122,10 @@ type PluginMetadata struct {
     StartedTime time.Time
     Pluginstage PluginStage // indicate the current plugin stage
     PluginId
-    mu                          sync.Mutex // Mutex to synchronize access to PluginStage field
-    PluginResponseRollingWindow            // rolling window of response times
+    mu                           sync.Mutex    // Mutex to synchronize access to PluginStage field
+    PluginResponseRollingWindow                // rolling window of response times
+    MaxPluginResponses           int           // max number of responses that plugin can send per anamolykey during last MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT
+    MaxPluginResponsesWindowTime time.Duration // interval in which plugin can send MAX_PLUGIN_RESPONSES responses per anamoly key
     // ... other common metadata fields
 }
 
@@ -161,7 +163,7 @@ func (gpl *PluginMetadata) CheckMisbehavingPlugins(pluginKey string) bool {
     }
 
     // Remove expired responses from the window(slice)
-    threshold := now.Add(-MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_DEFAULT) // go back in time by duration
+    threshold := now.Add(-gpl.MaxPluginResponsesWindowTime) // go back in time by duration
     for i := 0; i < len(responses); i++ {
         if responses[i].Before(threshold) {
             responses = responses[i+1:]
@@ -178,7 +180,7 @@ func (gpl *PluginMetadata) CheckMisbehavingPlugins(pluginKey string) bool {
     gpl.response[pluginKey] = responses
 
     // Check if the window size has reached the limit
-    if len(responses) >= MAX_PLUGIN_RESPONSES_DEFAULT {
+    if len(responses) >= gpl.MaxPluginResponses {
         // Window size reached the limit, delete the window
         delete(gpl.response, pluginKey)
         return true // misbehaving plugin

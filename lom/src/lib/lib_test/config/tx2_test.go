@@ -138,9 +138,9 @@ func TestGoroutineTracker(t *testing.T) {
         var names []string
         for _, info := range infos {
             if gi, ok := info.(lomcommon.GoroutineInfo); ok {
-                if gi.Status == lomcommon.GoroutineStatusRunning {
-                    names = append(names, gi.Name)
-                }
+
+                names = append(names, gi.Name)
+
             }
         }
         assert.ElementsMatch(t, []string{"test_goroutine3", "test_goroutine4"}, names)
@@ -186,14 +186,13 @@ func TestGoroutineTracker(t *testing.T) {
 
         // Check that the goroutine is no longer running after waiting for it
         wg.Wait()
-        running, _ = mygoroutinetracker.IsRunning("test_goroutine5")
         time.Sleep(1000 * time.Millisecond)
+        running, _ = mygoroutinetracker.IsRunning("test_goroutine5")
         assert.False(t, running)
 
         // Now get the time for a goroutine which is not running.
-        gottime, err := mygoroutinetracker.GetTimeStarted("test_goroutine5")
-        assert.Nil(t, err)
-        assert.Equal(t, funcgetstartedtime(), gottime)
+        _, err := mygoroutinetracker.GetTimeStarted("test_goroutine5")
+        assert.NotNil(t, err)
 
         // Now get the time for unknown goroutine
         gottime, err = mygoroutinetracker.GetTimeStarted("dummy_goroutine")
@@ -233,9 +232,9 @@ func TestGoroutineTracker(t *testing.T) {
         var names string
         for _, info := range infos {
             if gi, ok := info.(lomcommon.GoroutineInfo); ok {
-                if gi.Status == lomcommon.GoroutineStatusRunning {
-                    names = gi.Name
-                }
+
+                names = gi.Name
+
             }
         }
         assert.Regexp(t, name, names)
@@ -259,8 +258,7 @@ func TestGoroutineTracker(t *testing.T) {
         // Wait for both goroutines to complete
         wg.Add(2)
 
-        lomcommon.PrintGoroutineInfo("", true)
-        lomcommon.PrintGoroutineInfo("", false)
+        lomcommon.PrintGoroutineInfo("")
 
         // Start two goroutines with different names
         mockFunc1.On("exec").Once()
@@ -276,12 +274,9 @@ func TestGoroutineTracker(t *testing.T) {
         running, _ = mygoroutinetracker.IsRunning("test_goroutine8")
         assert.True(t, running)
 
-        lomcommon.PrintGoroutineInfo("", true)
-        lomcommon.PrintGoroutineInfo("", false)
-        lomcommon.PrintGoroutineInfo("test_goroutine7", true)
-        lomcommon.PrintGoroutineInfo("test_goroutine7", false)
-        lomcommon.PrintGoroutineInfo("test_Unknown", false)
-        lomcommon.PrintGoroutineInfo("test_Unknown", true)
+        lomcommon.PrintGoroutineInfo("")
+        lomcommon.PrintGoroutineInfo("test_goroutine7")
+        lomcommon.PrintGoroutineInfo("test_Unknown")
 
         // check for non running goroutines
         status, eval := mygoroutinetracker.IsRunning("test_non_existent")
@@ -474,8 +469,8 @@ func TestReadProcsConf(t *testing.T) {
         configMgr, err := lomcommon.InitConfigMgr(configFiles)
         assert.Nil(t, err)
 
-        _, err = configMgr.GetProcsConfig("proc_3") // proc_3 do not exist in config file
-        assert.Regexp(t, regexp.MustCompile(`.*Failed to get config for proc ID \(proc_3\)`), err.Error())
+        _, err = configMgr.GetProcsConfig("proc_invalid_3") // proc_invalid_3 do not exist in config file
+        assert.Regexp(t, regexp.MustCompile(`.*Failed to get config for proc ID \(proc_invalid_3\)`), err.Error())
     })
 
     t.Run("valid env path", func(t *testing.T) {

@@ -61,7 +61,9 @@ dbClientTest() {
 }
 
 test_plugin_mgr() {
-    go test -v -p 1 -cover $1 -coverprofile=coverprofile_plmgr.out -coverpkg lom/src/lib/lomcommon,lom/src/pluginmgr/pluginmgr_common,lom/src/pluginmgr/plugins_common,lom/src/pluginmgr/plugins_files -covermode=atomic ./src/pluginmgr/pluginmgr_test ./src/pluginmgr/pluginmgr_common
+    #CGO_ENABLED=1 GORACE="log_path=/tmp/race/gou_report"  go test -race -v -p 1 -cover $1 -coverprofile=coverprofile_plmgr.out -coverpkg lom/src/pluginmgr/pluginmgr_common,lom/src/plugins/plugins_common,lom/src/plugins/plugins_files -covermode=atomic ./src/pluginmgr/pluginmgr_common 
+    go test -v -p 1 -cover $1 -coverprofile=coverprofile_plmgr.out -coverpkg lom/src/pluginmgr/pluginmgr_common,lom/src/plugins/plugins_common,lom/src/plugins/plugins_files -covermode=atomic ./src/pluginmgr/pluginmgr_common ./src/plugins/plugins_common
+    
     if [ $? -ne 0 ]; then
         echo "Failed to run plugin manager test"
         exit -1
@@ -70,6 +72,20 @@ test_plugin_mgr() {
     go tool cover -html=coverprofile_plmgr.out -o /tmp/coverage_plmgr.html
     ls -l coverprofile_plmgr.out /tmp/coverage_plmgr.html
     echo "View /tmp/coverage_plmgr.html in Edge"
+}
+
+test_plugins_common() {
+    #CGO_ENABLED=1 GORACE="log_path=/tmp/race/gou_report"  go test -race -v -p 1 -cover $1 -coverprofile=coverprofile_plmgr.out -coverpkg lom/src/pluginmgr/pluginmgr_common,lom/src/plugins/plugins_common,lom/src/plugins/plugins_files -covermode=atomic ./src/plugins/plugins_common
+    go test -v -p 1 -cover $1 -coverprofile=coverprofile_plmgr.out -coverpkg lom/src/pluginmgr/pluginmgr_common,lom/src/plugins/plugins_common,lom/src/plugins/plugins_files -covermode=atomic ./src/plugins/plugins_common
+    
+    if [ $? -ne 0 ]; then
+        echo "Failed to run plugins common test"
+        exit -1
+    fi
+   
+    go tool cover -html=coverprofile_plmgr.out -o /tmp/coverage_plugins_common.html
+    ls -l coverprofile_plugins_common.out /tmp/coverage_plugins_common.html
+    echo "View /tmp/coverage_plugins_common.html in Edge"
 }
 
 clean() {
@@ -106,6 +122,9 @@ elif [[ "dbClientTest" == "$cmd"* ]]; then
     
 elif [[ "test_plugin_mgr" == "$cmd"* ]]; then
     test_plugin_mgr ""
+
+elif [[ "test_plugins_common" == "$cmd"* ]]; then
+    test_plugins_common ""
 
 elif [[ "vtest" == "$cmd"* ]]; then
     test "-v"
