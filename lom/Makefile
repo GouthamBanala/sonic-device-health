@@ -139,6 +139,8 @@ COMMON_DEPS := format_code add-extract_file_coverage add-aggregate_file_coverage
 all: $(COMMON_DEPS)
 	$(BUILD_DIR)/aggregate_file_coverage.sh
 
+all-skiptests : $(CMN_C_LIB) $(ENGINE_BIN) $(PLUGIN_MANAGER_BIN) $(SONIC_LINK_CRC_MOCKER_TEST) $(INTEGRATION_TEST)
+
 all-silent: LIB_TEST_FLAGS :=
 all-silent: $(COMMON_DEPS)
 	$(BUILD_DIR)/aggregate_file_coverage.sh

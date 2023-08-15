@@ -16,5 +16,16 @@
 			"MinOutliersForDetection": 2,
 			"LookBackPeriodInSecs": 125
 		}
+	},
+	"link_crc_safety": {
+		"Name": "link_crc_safety",
+		"Type": "Safety",
+		"Timeout": 15,
+		"MinUpCount" : 80
+	},
+	"link_crc_mitigation": {
+		"Name": "link_crc_mitigation",
+		"Type": "Mitigation",
+		"Timeout": 15
 	}
 }

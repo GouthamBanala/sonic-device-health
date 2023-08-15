@@ -72,7 +72,7 @@ func (gpl *GenericPluginDetection) Request(hbchan chan plugins_common.PluginHear
         InstanceId:        request.InstanceId,
         AnomalyInstanceId: request.AnomalyInstanceId,
         AnomalyKey:        "Ethernet10",
-        Response:          "Ethernet10 is down",
+        Response:          "Detected Issue on Ethernet10",
         ResultCode:        0,         // or non zero
         ResultStr:         "Success", // or "Failure"
     }

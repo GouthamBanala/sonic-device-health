@@ -5,6 +5,16 @@
 				"name": "link_crc",
 				"version": "1.0.0.0",
 				"path": ""
+			},
+			"link_crc_safety": {
+				"name": "link_crc_safety",
+				"version": "1.0.0.0",
+				"path": ""
+			},
+			"link_crc_mitigation": {
+				"name": "link_crc_mitigation",
+				"version": "1.0.0.0",
+				"path": ""
 			}
 		}
 	}

@@ -2267,7 +2267,7 @@ func Test_LoadAddPlugin(t *testing.T) {
         clientTx := new(mockClientTx)
 
         clientTx.On("RegisterClient", mock.Anything).Return(nil) // pass anything as first argument
-        //clientTx.On("RegisterAction", mock.Anything).Return(errors.New("error"))
+        clientTx.On("RegisterAction", mock.Anything).Return(nil)
 
         // Create the PluginManager instance with the mock objects
         plmgr := GetPluginManager(clientTx)
@@ -2278,20 +2278,47 @@ func Test_LoadAddPlugin(t *testing.T) {
         // create test_plugin_001.
         f_obj := func(...interface{}) plugins_common.Plugin {
             // ... create and return a new instance of MyPlugin
-            return &test_plugin_001_bad{}
+            return &test_startup_plugin_001{}
         }
 
-        plugins_common.RegisterPlugin("non_existant", f_obj)
+        plugins_common.RegisterPlugin("test_startup_plugin_001", f_obj)
 
-        eval := plmgr.loadPlugin("test_plugin_001_bad", "1.0")
-        if !logger.FindPrefix("loadPlugin : Registering plugin took too long. Skipped loading. pluginname : test_plugin_001_bad version : 1.0") {
+        eval := plmgr.loadPlugin("test_startup_plugin_001", "1.0")
+        if !logger.FindPrefix("loadPlugin : Registering plugin took too long. pluginname : test_startup_plugin_001 version : 1.0") {
             t.Errorf("Expected log message not found")
         }
-
-        assert.NotNil(t, eval)
+        assert.Nil(t, eval)
         clientTx.AssertExpectations(t)
     })
 
+    t.Run("TestLoadAddPlugin check long loading time with failed register", func(t *testing.T) {
+        logger := setup()
+        clientTx := new(mockClientTx)
+
+        clientTx.On("RegisterClient", mock.Anything).Return(nil) // pass anything as first argument
+        clientTx.On("RegisterAction", mock.Anything).Return(errors.New("error"))
+
+        // Create the PluginManager instance with the mock objects
+        plmgr := GetPluginManager(clientTx)
+        plmgr.goRoutineCleanupTimeout = 1 * time.Second
+        plmgr.pluginLoadingTimeout = 100 * time.Millisecond
+        plmgr.setShutdownStatus(false)
+
+        // create test_plugin_001.
+        f_obj := func(...interface{}) plugins_common.Plugin {
+            // ... create and return a new instance of MyPlugin
+            return &test_startup_plugin_001{}
+        }
+
+        plugins_common.RegisterPlugin("test_startup_plugin_001", f_obj)
+
+        eval := plmgr.loadPlugin("test_startup_plugin_001", "1.0")
+        if !logger.FindPrefix("loadPlugin : Registering plugin took too long. pluginname : test_startup_plugin_001 version : 1.0") {
+            t.Errorf("Expected log message not found")
+        }
+        assert.NotNil(t, eval)
+        clientTx.AssertExpectations(t)
+    })
 }
 
 // TestDeregisterPLugin tests the deregister plugin functionality

@@ -18,7 +18,7 @@ const (
     MAX_PLUGIN_RESPONSES = "MAX_PLUGIN_RESPONSES" /* Max number of reesponses that plugin can send per
        anamolykey during last MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT
        before plugin manager mark it as disabled. Applicable for plugin's with timeout */
-    MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_SECS = "MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_SECS" /* Interval in which plugin can send
+    MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_IN_SECS = "MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_IN_SECS" /* Interval in which plugin can send
        MAX_PLUGIN_RESPONSES_DEFAULT responses per anamoly key */
 
     /* Look for this name in Env or file */
@@ -112,7 +112,7 @@ func (p *GlobalConfig_t) setDefaults() {
     p.ints["PLUGIN_MIN_ERR_CNT_TO_SKIP_HEARTBEAT"] = 3
 
     p.ints["MAX_PLUGIN_RESPONSES"] = 100
-    p.ints["MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_SECS"] = 60
+    p.ints["MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_IN_SECS"] = 60
 
 }
 

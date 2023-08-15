@@ -6,18 +6,18 @@
 package pluginmgr_common
 
 import (
-    "flag"
-    "fmt"
-    "log/syslog"
-    "lom/src/lib/lomcommon"
-    "lom/src/lib/lomipc"
-    "lom/src/plugins/plugins_common"
-    "os"
-    "os/signal"
-    "sync"
-    "sync/atomic"
-    "syscall"
-    "time"
+	"flag"
+	"fmt"
+	"log/syslog"
+	"lom/src/lib/lomcommon"
+	"lom/src/lib/lomipc"
+	"lom/src/plugins/plugins_common"
+	"os"
+	"os/signal"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 /*
@@ -421,7 +421,6 @@ func (plmgr *PluginManager) handleMisbehavingPlugins(
 
     if respData.AnomalyKey != "" && respData.ResultCode == 0 { // plugin+Anamolykey has valid response
         pluginKey := respData.Action + respData.AnomalyKey
-
         // check misbehaving plugin
         if pluginmetadata.CheckMisbehavingPlugins(pluginKey) {
             LogInfo("In handleMisbehavingPlugins(): Plugin %v is misbehaving for anamoly key %v. Ignoring the response",
@@ -727,6 +726,7 @@ func (plmgr *PluginManager) addPlugin(pluginName string, pluginVersion string) e
     return nil
 }
 
+// TODO: Goutham : For longer loading time, should we shutdown the plugin and return error?
 /* loadPlugin() : Loads plugin and calls its init() and registerAction() calls synchronously.
  * This call may block.
  * Input:
@@ -739,26 +739,16 @@ func (plmgr *PluginManager) addPlugin(pluginName string, pluginVersion string) e
  */
 
 func (plmgr *PluginManager) loadPlugin(pluginName string, pluginVersion string) error {
-    // Create a channel to receive the result of AddPlugin()
-    resultChan := make(chan error, 1)
-
-    lomcommon.GetGoroutineTracker().Start("plg_mgr_LoadPlugin_"+pluginName+"_"+plugins_common.GetUniqueID(), func() {
-        resultChan <- plmgr.addPlugin(pluginName, pluginVersion)
-    })
-
-    // Wait for either the result or the timeout
-    select {
-    case err := <-resultChan:
-        // AddPlugin completed within the timeout
-        return err
-    case <-time.After(plmgr.pluginLoadingTimeout):
-        // AddPlugin timed out
-        msg := fmt.Sprintf("loadPlugin : Registering plugin took too long. Skipped loading. pluginname : %s version : %s\n", pluginName, pluginVersion)
+    timeBefore := time.Now()
+    result := plmgr.addPlugin(pluginName, pluginVersion)
+    timeAfter := time.Now()
+    // If it takes more time, then log periodic log with timeout and fallback timeout
+    if timeAfter.Sub(timeBefore) > plmgr.pluginLoadingTimeout {
+        msg := fmt.Sprintf("loadPlugin : Registering plugin took too long. pluginname : %s version : %s", pluginName, pluginVersion)
         AddPeriodicLogWithTimeouts("Plgmgr_loadPlugin_"+plugins_common.GetUniqueID()+"_"+pluginName,
             msg, plmgr.pluginPeriodicTimeout, plmgr.pluginPeriodicFallbackTimeout)
-        return LogError(msg)
     }
-    return nil
+    return result
 }
 
 // RegisterActionWithEngine : Register plugin with engine
@@ -815,7 +805,7 @@ func CreatePluginInstance(pluginID plugins_common.PluginId, actionCfg *lomcommon
         Pluginstage:                  plugins_common.PluginStageUnknown,
         PluginId:                     pluginID,
         MaxPluginResponses:           lomcommon.GetConfigMgr().GetGlobalCfgInt(lomcommon.MAX_PLUGIN_RESPONSES),
-        MaxPluginResponsesWindowTime: time.Duration(lomcommon.GetConfigMgr().GetGlobalCfgInt(lomcommon.MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_SECS)) * time.Second,
+        MaxPluginResponsesWindowTime: time.Duration(lomcommon.GetConfigMgr().GetGlobalCfgInt(lomcommon.MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_IN_SECS)) * time.Second,
         PluginResponseRollingWindow: plugins_common.PluginResponseRollingWindow{
             Response: make(map[string][]time.Time),
         },
@@ -937,7 +927,6 @@ func StartPluginManager(waittime time.Duration) error {
  * Setup Plugin Manager  - Parse program arguments, setup syslog signals, load environment variables, validate config files, etc
  */
 func SetupPluginManager() error {
-
     //parse program arguments & assign values to program variables. Hree proc_X value is read
     msg := ParseArguments()
 
