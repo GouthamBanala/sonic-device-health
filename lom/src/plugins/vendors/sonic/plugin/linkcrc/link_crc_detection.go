@@ -65,7 +65,7 @@ func init() {
 
 /* Inheritied from Plugin */
 func (linkCrcDetectionPlugin *LinkCRCDetectionPlugin) Init(actionConfig *lomcommon.ActionCfg_t) error {
-    lomcommon.LogInfo("Started Init() for (%s)", link_crc_plugin_name)
+    lomcommon.LogInfo("Started Init() for (%s)", "link_crc_detection")
     // Get config settings or assign default values.
     var resultMap map[string]interface{}
     jsonErr := json.Unmarshal([]byte(actionConfig.ActionKnobs), &resultMap)
@@ -102,7 +102,7 @@ func (linkCrcDetectionPlugin *LinkCRCDetectionPlugin) Init(actionConfig *lomcomm
         lomcommon.LogError(fmt.Sprintf(link_crc_prefix+"Plugin initialization failed. (%s), err: (%v)", actionConfig.Name, err))
         return err
     }
-    lomcommon.LogInfo("Successfully Init() for (%s)", link_crc_plugin_name)
+    lomcommon.LogInfo("Successfully Init() for (%s)", "link_crc_detection")
     return nil
 }
 
@@ -153,6 +153,7 @@ func (linkCrcDetectionPlugin *LinkCRCDetectionPlugin) executeCrcDetection(reques
                         lomcommon.LogError(fmt.Sprintf(link_crc_prefix+"Error getting link status from redis for interface %s. Err: %v", interfaceName, err))
                         *isExecutionHealthy = false
                     } else if adminStatus && operStatus { /* If both are active, consider adding it to the list of final reported errors */
+                        /* To-DO : Prithvi/Goutham : Should break the interfaces or do it in plugin manager */
                         listOfInterfacesWithCrcError.WriteString(interfaceName)
                         listOfInterfacesWithCrcError.WriteString(",")
                     }

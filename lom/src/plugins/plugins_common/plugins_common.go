@@ -6,6 +6,8 @@
 package plugins_common
 
 import (
+    "fmt"
+    "log/syslog"
     "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
     "strconv"
@@ -191,4 +193,44 @@ var counter uint64
 func GetUniqueID() string {
     newCounter := atomic.AddUint64(&counter, 1)
     return strconv.FormatUint(newCounter, 10)
+}
+
+/*
+ * Logger is used by plugins to log messages by specifying the plugin prefix
+ * Useful to identify which plugin is running common code
+ */
+type PluginLogger struct {
+    Prefix  string
+    LogFunc func(int, syslog.Priority, string, ...interface{}) string
+}
+
+func NewLogger(prefix string, logFunc func(int, syslog.Priority, string, ...interface{}) string) *PluginLogger {
+    return &PluginLogger{
+        Prefix:  prefix + ": ",
+        LogFunc: logFunc,
+    }
+}
+
+func NewDefaultLogger(prefix string) *PluginLogger {
+    return NewLogger(prefix, lomcommon.LogMessageWithSkip)
+}
+
+func (l *PluginLogger) LogInfo(format string, a ...interface{}) string {
+    return l.LogFunc(1, syslog.LOG_INFO, l.Prefix+format, a...)
+}
+
+func (l *PluginLogger) LogError(format string, a ...interface{}) error {
+    return fmt.Errorf(l.LogFunc(1, syslog.LOG_ERR, l.Prefix+format, a...))
+}
+
+func (l *PluginLogger) LogDebug(format string, a ...interface{}) string {
+    return l.LogFunc(1, syslog.LOG_DEBUG, l.Prefix+format, a...)
+}
+
+func (l *PluginLogger) LogWarning(format string, a ...interface{}) string {
+    return l.LogFunc(1, syslog.LOG_WARNING, l.Prefix+format, a...)
+}
+
+func (l *PluginLogger) LogPanic(format string, a ...interface{}) string {
+    return l.LogFunc(1, syslog.LOG_CRIT, l.Prefix+format, a...)
 }

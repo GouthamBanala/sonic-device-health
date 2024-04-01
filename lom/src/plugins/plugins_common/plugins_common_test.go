@@ -1,6 +1,9 @@
 package plugins_common
 
 import (
+    "fmt"
+    "log/syslog"
+    "sync"
     "testing"
     "time"
 
@@ -64,4 +67,112 @@ func TestSetPluginStageName(t *testing.T) {
         "Expected Sstring to be  Loading succes")
     assert.Equal(t, "Unknown stage", GetPluginStageToString(100),
         "Expected Sstring to be  Loading succes")
+}
+
+func Test_GetUniqueID(t *testing.T) {
+    t.Run("test unique IDs", func(t *testing.T) {
+        id1 := GetUniqueID()
+        id2 := GetUniqueID()
+
+        assert := assert.New(t)
+        assert.NotEqual(id1, id2, "IDs are expected to be unique")
+    })
+
+    t.Run("test unique IDs with concurrency", func(t *testing.T) {
+        var wg sync.WaitGroup
+        var mu sync.Mutex
+        ids := make(map[string]bool)
+
+        for i := 0; i < 100; i++ {
+            wg.Add(1)
+            go func() {
+                defer wg.Done()
+                id := GetUniqueID()
+
+                mu.Lock()
+                if _, exists := ids[id]; exists {
+                    t.Errorf("Duplicate ID found: %s", id)
+                }
+                ids[id] = true
+                mu.Unlock()
+            }()
+        }
+
+        wg.Wait()
+    })
+}
+
+func Test_PluginLogger(t *testing.T) {
+    var receivedMessage string
+    var receivedPriority syslog.Priority
+
+    // Mock log function that records the received message and priority
+    mockLogFunc := func(skip int, priority syslog.Priority, messageFmt string, args ...interface{}) string {
+        receivedMessage = fmt.Sprintf(messageFmt, args...)
+        receivedPriority = priority
+        return receivedMessage
+    }
+
+    logger := NewLogger("test", mockLogFunc)
+
+    t.Run("LogInfo", func(t *testing.T) {
+        expectedMessage := "test: This is an info message"
+        expectedPriority := syslog.LOG_INFO
+
+        msg := logger.LogInfo("This is an info message")
+
+        assert := assert.New(t)
+        assert.Equal(expectedMessage, msg)
+        assert.Equal(expectedMessage, receivedMessage)
+        assert.Equal(expectedPriority, receivedPriority)
+    })
+
+    t.Run("LogError", func(t *testing.T) {
+        expectedMessage := "test: This is an error message"
+        expectedPriority := syslog.LOG_ERR
+
+        err := logger.LogError("This is an error message")
+
+        assert := assert.New(t)
+        assert.Error(err)
+        assert.Equal(expectedMessage, err.Error())
+        assert.Equal(expectedMessage, receivedMessage)
+        assert.Equal(expectedPriority, receivedPriority)
+    })
+
+    t.Run("LogDebug", func(t *testing.T) {
+        expectedMessage := "test: This is a debug message"
+        expectedPriority := syslog.LOG_DEBUG
+
+        msg := logger.LogDebug("This is a debug message")
+
+        assert := assert.New(t)
+        assert.Equal(expectedMessage, msg)
+        assert.Equal(expectedMessage, receivedMessage)
+        assert.Equal(expectedPriority, receivedPriority)
+    })
+
+    t.Run("LogWarning", func(t *testing.T) {
+        expectedMessage := "test: This is a warning message"
+        expectedPriority := syslog.LOG_WARNING
+
+        msg := logger.LogWarning("This is a warning message")
+
+        assert := assert.New(t)
+        assert.Equal(expectedMessage, msg)
+        assert.Equal(expectedMessage, receivedMessage)
+        assert.Equal(expectedPriority, receivedPriority)
+    })
+
+    t.Run("LogPanic", func(t *testing.T) {
+        expectedMessage := "test: This is a panic message"
+        expectedPriority := syslog.LOG_CRIT
+
+        msg := logger.LogPanic("This is a panic message")
+
+        assert := assert.New(t)
+        assert.Equal(expectedMessage, msg)
+        assert.Equal(expectedMessage, receivedMessage)
+        assert.Equal(expectedPriority, receivedPriority)
+    })
 }

@@ -4,8 +4,11 @@ package plugins_common
 import (
     "container/list"
     "context"
+    "fmt"
     "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
+    "math"
+    "math/rand"
     "sync"
     "sync/atomic"
     "time"
@@ -463,4 +466,367 @@ func GetResponse(request *lomipc.ActionRequestData, anomalyKey string, response 
         ResultCode:        resultCode,
         ResultStr:         resultString}
     return &responseData
+}
+
+/*
+ * This utility is designed for subscription-based plugins that need to detect anomalies triggered by GNMI subscriptions.
+ * The utility manages the execution of detection logic when a subscription request is received and handles the shutdown of the request when the plugin is shut down.
+ * If a detection plugin uses this utility as a field in its struct, the Request and Shutdown methods from this utility are promoted to the plugin.
+ *
+ * Guidance for requestFunc:
+ *  - This function is called to handle a subscription request. It should return nil if the subscription detection needs to continue.
+ *  - If the detection is complete and a response needs to be returned to the caller, the function should return an ActionResponseData.
+ *  - If there is an issue in the Request method that needs to be reported, the function should return an error.
+ *
+ * The utility uses an exponential backoff strategy with jitter to handle errors and retries.
+ *
+ * The utility also uses a context to manage cancellation of the goroutines. Make sure that any long-running or blocking operations in requestFunc periodically check whether
+ * the context has been cancelled and return early if so.
+ *
+ * The utility publishes a heartbeat at a configurable interval. If a certain number of consecutive errors occur, the heartbeat is skipped.
+ *
+ * The utility provides several custom error types to handle different error conditions, such as subscription errors, receive errors, shutdown errors, etc.
+ */
+
+// SubscribeError represents an error that occurred while subscribing to GNMI paths.
+type SubscribeError struct {
+    Err error
+}
+
+func (e *SubscribeError) Error() string {
+    return fmt.Sprintf("failed to subscribe to gnmi paths: %v", e.Err)
+}
+
+// ReceiveError represents an error that occurred while receiving GNMI notifications.
+type ReceiveError struct {
+    Err error
+}
+
+func (e *ReceiveError) Error() string {
+    return fmt.Sprintf("failed to receive GNMI notifications: %v", e.Err)
+}
+
+// ShutdownError represents an error that occurred while shutting down the GNMI client.
+type ShutdownError struct {
+    Err error
+}
+
+func (e *ShutdownError) Error() string {
+    return fmt.Sprintf("failed to shutdown GNMI client: %v", e.Err)
+}
+
+// ChannelClosedError represents an error that occurred when a channel was unexpectedly closed.
+type ChannelClosedError struct {
+    Err error
+}
+
+func (e *ChannelClosedError) Error() string {
+    return fmt.Sprintf("channel closed: %v", e.Err)
+}
+
+// SubscriptionCancelledError represents an error that occurred when a subscription was cancelled.
+type SubscriptionCancelledError struct {
+    Err error
+}
+
+func (e *SubscriptionCancelledError) Error() string {
+    return fmt.Sprintf("subscription cancelled: %v", e.Err)
+}
+
+// SubscribeprotocolError represents an internal error in the subscription protocol.
+type SubscribeprotocolError struct {
+    Err error
+}
+
+func (e *SubscribeprotocolError) Error() string {
+    return fmt.Sprintf("Subscription internal error: %v", e.Err)
+}
+
+// SessionCreationError represents an error that occurred while creating a session.
+type SessionCreationError struct {
+    Err error
+}
+
+func (e *SessionCreationError) Error() string {
+    return fmt.Sprintf("Session creation error: %v", e.Err)
+}
+
+type SubscriptionBasedPluginUtil struct {
+    requestFunc             func(*lomipc.ActionRequestData, context.Context, bool) (*lomipc.ActionResponseData, error) // Handles subscription request in plugin
+    shutdownFunc            func() error                                                                               // handles the shutdown in the plugin
+    PluginName              string
+    shutDownInitiated       atomic.Bool // shutDownInitiated is a flag that indicates whether the shutdown of the plugin has been initiated
+    numOfConsecutiveErrors  atomic.Uint64
+    responseChannel         chan *lomipc.ActionResponseData
+    ctx                     context.Context
+    cancelCtxFunc           context.CancelFunc
+    heartBeatIntervalInSecs int
+    pluginLogger            *PluginLogger
+    backoffTimeSecs         int         // backoffTimeSecs is the time in seconds to wait before retrying after an error
+    initInitialized         atomic.Bool // initInitialized is a flag that indicates whether the Init method has been called
+}
+
+/*
+NotifyAsHealthySubscription resets the counter of consecutive errors.
+
+This function should be called from plugin when a successful subscription detection occurs to indicate
+that the plugin is healthy.
+*/
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) NotifyAsHealthySubscription() {
+    subscriptionBasedPluginUtil.numOfConsecutiveErrors.Store(0)
+}
+
+/*
+ * Init initializes the SubscriptionBasedPluginUtil struct.
+ *
+ * Parameters:
+ * - pluginName: A string. This is the name of the plugin.
+ * - actionConfig: A pointer to an ActionCfg_t struct. This is the configuration for the action.
+ * - requestFunction: A function. This is the function that handles a subscription request.
+ * - shutDownFunction: A function. This is the function that handles the shutdown of the plugin.
+ * - pluginLogger: A pointer to a PluginLogger struct. This is the logger for the plugin.
+ *
+ * Returns:
+ * - An error. This is nil if the function completed successfully and non-nil if an error occurred.
+ */
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Init(pluginName string, actionConfig *lomcommon.ActionCfg_t,
+    requestFunction func(*lomipc.ActionRequestData, context.Context, bool) (*lomipc.ActionResponseData, error), shutDownFunction func() error,
+    pluginLogger *PluginLogger, backoffTimeSecs int) error {
+
+    if pluginLogger == nil {
+        return lomcommon.LogError("Plugin logger is nil")
+    }
+    subscriptionBasedPluginUtil.pluginLogger = pluginLogger
+
+    if actionConfig.HeartbeatInt <= 0 {
+        // Do not use a default heartbeat interval. Validate and honor the one passed from plugin manager.
+        return pluginLogger.LogError("Invalid heartbeat interval %d", actionConfig.HeartbeatInt)
+    }
+
+    if requestFunction == nil || shutDownFunction == nil {
+        return pluginLogger.LogError("requestFunction or shutDownFunction is not initialized")
+    }
+
+    if pluginName == "" {
+        return pluginLogger.LogError("PluginName invalid")
+    }
+
+    subscriptionBasedPluginUtil.heartBeatIntervalInSecs = actionConfig.HeartbeatInt
+    /* Size of responseChannel should be 2, so that the go routine handling request can be terminated on shutdown if the Request method has already terminated. */
+    subscriptionBasedPluginUtil.responseChannel = make(chan *lomipc.ActionResponseData, 2)
+    subscriptionBasedPluginUtil.requestFunc = requestFunction
+    subscriptionBasedPluginUtil.shutdownFunc = shutDownFunction
+    subscriptionBasedPluginUtil.PluginName = pluginName
+    subscriptionBasedPluginUtil.backoffTimeSecs = backoffTimeSecs
+    subscriptionBasedPluginUtil.ctx, subscriptionBasedPluginUtil.cancelCtxFunc = context.WithCancel(context.Background())
+    subscriptionBasedPluginUtil.initInitialized.Swap(true)
+    pluginLogger.LogInfo("Initialized subscriptionBasedPluginUtil successfuly for (%s)", pluginName)
+    return nil
+}
+
+/*
+ * Request starts handling a request and periodically sends a heartbeat until a response is received or untill shutdoen.
+ *
+ * Parameters:
+ * - hbchan: A channel for sending heartbeats.
+ * - request: The request to handle.
+ *
+ * The function returns a response when one is received or the operation is cancelled.
+ * If shutdown has been initiated, the function logs an error and returns an aborted response.
+ * If the request timeout is greater than 0, the function returns an invalid argument response.
+ *
+ * Returns:
+ * - A pointer to an ActionResponseData struct. This is the response to the request.
+ */
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Request(hbchan chan PluginHeartBeat, request *lomipc.ActionRequestData) *lomipc.ActionResponseData {
+
+    subscriptionBasedPluginUtil.pluginLogger.LogInfo("Started Request() for (%s)", subscriptionBasedPluginUtil.PluginName)
+
+    // If shutdown has been initiated, log an error and return an aborted response
+    if subscriptionBasedPluginUtil.shutDownInitiated.Load() {
+        subscriptionBasedPluginUtil.pluginLogger.LogError("Request called after shutdown for (%s)", subscriptionBasedPluginUtil.PluginName)
+        return GetResponse(request, "", "", ResultCodeAborted, ResultStringFailure)
+    }
+
+    if !subscriptionBasedPluginUtil.initInitialized.Load() {
+        subscriptionBasedPluginUtil.pluginLogger.LogError("Init not called for (%s)", subscriptionBasedPluginUtil.PluginName)
+        return GetResponse(request, "", "", ResultCodeAborted, ResultStringFailure)
+    }
+
+    if request.Timeout > 0 {
+        return GetResponse(request, "", "", ResultCodeInvalidArgument, "Invalid Timeout value for detection plugin")
+    }
+
+    // Publish a heartbeat immediately.
+    pluginHeartBeat := PluginHeartBeat{PluginName: subscriptionBasedPluginUtil.PluginName, EpochTime: time.Now().Unix()}
+    hbchan <- pluginHeartBeat
+
+    // Start handling the request in a separate goroutine
+    lomcommon.GetGoroutineTracker().Start(plugin_prefix+subscriptionBasedPluginUtil.PluginName+"_handleRequest_"+GetUniqueID(), subscriptionBasedPluginUtil.handleRequest, request)
+
+    // Create a ticker for sending heartbeats
+    heartBeatTicker := time.NewTicker(time.Duration(subscriptionBasedPluginUtil.heartBeatIntervalInSecs) * time.Second)
+    defer heartBeatTicker.Stop()
+
+    for {
+        select {
+        case <-heartBeatTicker.C:
+            // When the ticker fires, publish a heartbeat
+            subscriptionBasedPluginUtil.publishHeartBeat(hbchan)
+
+        case resp := <-subscriptionBasedPluginUtil.responseChannel:
+            // When a response is received, return it back to plugin manager
+            return resp
+
+        case <-subscriptionBasedPluginUtil.ctx.Done():
+            // Shutdown stops the periodic detection, return an aborted response
+            subscriptionBasedPluginUtil.pluginLogger.LogInfo("Aborting Request for (%s)", subscriptionBasedPluginUtil.PluginName)
+            responseData := GetResponse(request, "", "", ResultCodeAborted, ResultStringFailure)
+            return responseData
+        }
+    }
+}
+
+/*
+ * publishHeartBeat publishes a heartbeat after performing validations.
+ *
+ * Parameters:
+ * - hbchan: A channel for sending heartbeats.
+ *
+ * The function checks the number of consecutive errors before deciding whether to publish a heartbeat.
+ * If the number of consecutive errors is greater than or equal to a certain threshold, the function logs an error and returns without publishing a heartbeat.
+ * Otherwise, the function creates a PluginHeartBeat struct and sends it on the hbchan channel.
+ *
+ * This function does not return a value.
+ */
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) publishHeartBeat(hbchan chan PluginHeartBeat) {
+    numConsecutiveErrors := subscriptionBasedPluginUtil.numOfConsecutiveErrors.Load()
+
+    if numConsecutiveErrors >= uint64(lomcommon.GetConfigMgr().GetGlobalCfgInt(min_err_cnt_to_skip_hb_key)) {
+        subscriptionBasedPluginUtil.pluginLogger.LogError("Skipping heartbeat for %s. numConsecutiveErrors %d", subscriptionBasedPluginUtil.PluginName, numConsecutiveErrors)
+        return
+    }
+
+    /* Publish heartbeat only after above validations pass.*/
+    pluginHeartBeat := PluginHeartBeat{PluginName: subscriptionBasedPluginUtil.PluginName, EpochTime: time.Now().Unix()}
+    hbchan <- pluginHeartBeat
+}
+
+/*
+ * handleRequest handles a subscription request.
+ *
+ * Parameters:
+ * - request: A pointer to an ActionRequestData struct. This is the request to handle.
+ *
+ * The function initializes a backoffTimeSecs timer and a flag to indicate if the connection to the gnmi server needs to be restarted.
+ *
+ * This function does not return a value.
+ */
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) handleRequest(request *lomipc.ActionRequestData) {
+    subscriptionBasedPluginUtil.pluginLogger.LogInfo("Subscription handler initialized for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
+    // Initialize the backoffTimeSecs timer
+    // The backoffTimeSecs timer is used to reconnect to the gnmi server in case of connection errors
+    retryCount := 0
+    maxDelay := float64(subscriptionBasedPluginUtil.backoffTimeSecs)
+    var backoffTimer *time.Timer
+
+    // Flag to indicate if the connection to gnmi server needs to be restarted.
+    // This flag is set to true when there is connection error
+    restartConnection := false
+
+loop:
+    for {
+        var errCh chan error
+        var goroutineResponseCh chan *lomipc.ActionResponseData
+
+        // Call the plugin request function in a separate goroutine
+        if backoffTimer == nil {
+            errCh = make(chan error, 1)
+            goroutineResponseCh = make(chan *lomipc.ActionResponseData, 1)
+
+            lomcommon.GetGoroutineTracker().Start(plugin_prefix+subscriptionBasedPluginUtil.PluginName+"_plugin_request_"+GetUniqueID(),
+                func() {
+                    response, err := subscriptionBasedPluginUtil.requestFunc(request, subscriptionBasedPluginUtil.ctx, restartConnection)
+                    if err != nil {
+                        errCh <- err
+                    } else {
+                        // successful detection.
+                        goroutineResponseCh <- response
+                    }
+                })
+        }
+
+        select {
+        case data := <-goroutineResponseCh:
+            // If a shutdown has been initiated, stop processing updates
+            if subscriptionBasedPluginUtil.shutDownInitiated.Load() {
+                break loop
+            }
+
+            // successful detection. If a response is received, send the response to the response channel
+            subscriptionBasedPluginUtil.responseChannel <- data
+            subscriptionBasedPluginUtil.numOfConsecutiveErrors.Store(0)
+            restartConnection = false
+            retryCount = 0
+            backoffTimer = nil
+            return
+
+        case err := <-errCh:
+            //unhealthy execution
+            subscriptionBasedPluginUtil.numOfConsecutiveErrors.Add(1)
+            subscriptionBasedPluginUtil.pluginLogger.LogError("Incremented consecutiveError count for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
+
+            // decide if the connection to gnmi server needs to be restarted
+            switch err.(type) {
+            case *SubscribeprotocolError, *SessionCreationError, *ReceiveError, *SubscribeError:
+                // For errors, use a backoff strategy to reconnect to the gnmi server
+                delay := math.Min(maxDelay, math.Pow(2, float64(retryCount)))
+                jitter := delay/2.0 + rand.Float64()*delay/2.0 // Add jitter
+                backoffTimer = time.NewTimer(time.Duration(jitter) * time.Second)
+                retryCount++
+
+                restartConnection = true // Reconnect to the gnmi server
+            default:
+                // For other errors, do not use a backoff strategy to reconnect to the gnmi server
+            }
+
+        case <-subscriptionBasedPluginUtil.ctx.Done():
+            // If the context is done (i.e., a shutdown has been initiated), stop processing updates
+            subscriptionBasedPluginUtil.pluginLogger.LogInfo("Aborting handleRequest for (%s)", subscriptionBasedPluginUtil.PluginName)
+            break loop
+        }
+
+        if backoffTimer != nil && restartConnection {
+            select {
+            // If the backoff timer expires, continue to the next iteration of the loop to retry the request
+            case <-backoffTimer.C:
+                backoffTimer = nil
+            case <-subscriptionBasedPluginUtil.ctx.Done():
+                break loop
+            }
+        }
+    }
+}
+
+/*
+ * Shutdown aborts the request and performs cleanup.
+ *
+ * This function does not take any parameters.
+ *
+ * Returns:
+ * - An error. This is always nil, as the function does not perform any operations that can fail.
+ */
+func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Shutdown() error {
+    subscriptionBasedPluginUtil.pluginLogger.LogInfo("Shutdown called for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
+
+    if !subscriptionBasedPluginUtil.initInitialized.Load() {
+        subscriptionBasedPluginUtil.pluginLogger.LogError("Init not called for (%s)", subscriptionBasedPluginUtil.PluginName)
+        return nil
+    }
+
+    subscriptionBasedPluginUtil.cancelCtxFunc()
+    subscriptionBasedPluginUtil.shutDownInitiated.Store(true)
+    subscriptionBasedPluginUtil.shutdownFunc()
+    subscriptionBasedPluginUtil.pluginLogger.LogInfo("Shutdown successful for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
+    return nil
 }

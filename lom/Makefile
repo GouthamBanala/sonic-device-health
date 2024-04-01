@@ -183,6 +183,9 @@ PLUGINS_COMMON_TEST = $(TEST_DIR)/PluginsCommonTested
 SONIC_LINK_CRC_MOCKER_TEST = $(TEST_DIR)/linkcrc_mocker
 INTEGRATION_TEST = $(TEST_DIR)/integration_test
 GNMI_SERVER_TEST = $(TEST_DIR)/gNMIServerTested
+ARISTA_INSTALLER = $(INSTALL_DIR)/arista_installer
+ARISTA_COMMON_TEST = $(TEST_DIR)/AristaCommonTested
+ARISTA_IPTCRC_TEST = $(TEST_DIR)/AristaIptCrcTested
 
 .NOTPARALLEL:
 
@@ -263,16 +266,22 @@ clean-aggregate-file_coverage:
 	rm -f $(BUILD_DIR)/aggregate_file_coverage.sh
 
 .PHONY: all clean format_code clean-extract_file_coverage add-extract_file_coverage clean-aggregate-file_coverage add-aggregate_file_coverage \
-		COMMON_DEPS SONIC_DEPS check_build_platform prepare_temp_src update_import_statements update_imports_path
+		COMMON_DEPS SONIC_DEPS ARISTA_DEPS check_build_platform prepare_temp_src update_import_statements update_imports_path
 
 COMMON_DEPS := prepare_temp_src update_import_statements update_imports_path format_code add-extract_file_coverage add-aggregate_file_coverage \
 			  $(ENGINE_BIN) $(CMN_C_LIB) $(PLUGIN_MANAGER_BIN) $(CLI_BIN) gnmi-tools $(GNMI_SERVER_BIN)
+
 COMMON_DEPS_TEST := $(LIB_TEST) $(ENGINE_TEST) $(PLUGIN_MANAGER_TEST) $(PLUGINS_COMMON_TEST) $(PY_TEST) $(GNMI_SERVER_TEST)
 
 SONIC_DEPS := $(SONIC_DBCLIENT_TEST) $(SONIC_LINK_CRC_TEST) $(SONIC_LINK_CRC_MOCKER_TEST) $(INTEGRATION_TEST_BIN)
+ARISTA_DEPS := $(ARISTA_COMMON_TEST) $(ARISTA_IPTCRC_TEST) $(ARISTA_INSTALLER)
+
 ifeq ($(BUILD_PLATFORM), sonic)
 	BUILD_DEPS := $(SONIC_DEPS)
 	CLEAN_TARGET := clean-sonic
+else ifeq ($(BUILD_PLATFORM), arista)
+	BUILD_DEPS := $(ARISTA_DEPS)
+	CLEAN_TARGET := clean-arista
 else
 $(error Unsupported BUILD_PLATFORM: $(BUILD_PLATFORM))
 endif
@@ -294,7 +303,13 @@ all: check_build_platform $(COMMON_DEPS) $(COMMON_DEPS_TEST) $(BUILD_DEPS)
 	fi
 
 all-silent: LIB_TEST_FLAGS :=
-all-silent: check_build_platforms $(COMMON_DEPS) $(COMMON_DEPS_TEST) $(BUILD_DEPS)
+all-silent: check_build_platform $(COMMON_DEPS) $(COMMON_DEPS_TEST) $(BUILD_DEPS)
+	$(BUILD_DIR)/aggregate_file_coverage.sh
+	@if [ -f "$(TEST_DIR)/aggregate_coverage.html" ]; then \
+		$(BUILD_DIR)/extract_file_coverage.sh $(TEST_DIR)/aggregate_coverage.html; \
+	fi
+
+all-skiptests: check_build_platform $(COMMON_DEPS) $(BUILD_DEPS)
 	$(BUILD_DIR)/aggregate_file_coverage.sh
 	@if [ -f "$(TEST_DIR)/aggregate_coverage.html" ]; then \
 		$(BUILD_DIR)/extract_file_coverage.sh $(TEST_DIR)/aggregate_coverage.html; \

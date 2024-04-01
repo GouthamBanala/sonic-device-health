@@ -1,0 +1,20 @@
+{
+	"iptcrc_detection": {
+		"Name": "iptcrc_detection",
+		"Type": "Detection",
+		"Timeout": 0,
+		"HeartbeatInt": 30,
+		"Disable": false,
+		"Mimic": false,
+		"ActionKnobs": {			
+			"initial_detection_reporting_frequency_in_mins": 1,
+			"subsequent_detection_reporting_frequency_in_mins": 1,
+			"initial_detection_reporting_max_count": 12,
+			"periodic_subscription_interval_in_hours" : 24,
+			"error_backoff_time_in_secs" : 60,
+			"iptcrc_test_counter_name": "IptCrcErrCnt",
+			"chipid_name_mappings_file": "/mnt/flash/lom/active/config/chip_details_mapping.json",
+			"DetectionFreqInSecs": 30
+		}
+	}
+}

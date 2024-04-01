@@ -3,11 +3,12 @@ package plugins_common
 import (
     "context"
     "fmt"
-    "github.com/stretchr/testify/assert"
     "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
     "testing"
     "time"
+
+    "github.com/stretchr/testify/assert"
 )
 
 func init() {
@@ -138,6 +139,94 @@ func Test_DetectionReportingFreqLimiter_ResetCacheSucceedsInSubsequentFrequency(
 
     assert := assert.New(t)
     assert.Nil(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"], "Cache entry is expected to be removed")
+}
+
+// Test_DetectionReportingFreqLimiter_GetNextExpiry tests the GetNextExpiry method of the PluginReportingFrequencyLimiter.
+func Test_DetectionReportingFreqLimiter_GetNextExpiry(t *testing.T) {
+    detectionReportingFrequencyLimiter := GetDefaultDetectionFrequencyLimiter()
+    currentTimeMinusTwoMins := time.Now().Add(-2 * time.Minute)
+
+    // Create a ReportingDetails struct with the last reported time set to currentTimeMinusTwoMins and the count of times reported set to 8
+    reportingDetails := ReportingDetails{lastReported: currentTimeMinusTwoMins, countOfTimesReported: 8}
+
+    // Add the ReportingDetails struct to the cache of the detection reporting frequency limiter with the key "Ethernet0"
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"] = &reportingDetails
+
+    nextExpiryKey, nextExpiry := detectionReportingFrequencyLimiter.GetNextExpiry()
+    assert := assert.New(t)
+    assert.Equal("Ethernet0", nextExpiryKey, "Next expiry key is expected to be Ethernet0")
+
+    // Assert that the next expiry time is the last reported time plus the initial reporting frequency in minutes
+    assert.True(currentTimeMinusTwoMins.Add(time.Duration(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).initialReportingFreqInMins)*time.Minute).Equal(nextExpiry), "Next expiry time is not as expected")
+}
+
+// Test_DetectionReportingFreqLimiter_GetNextExpiry tests the GetNextExpiry method of the PluginReportingFrequencyLimiter.
+func Test_DetectionReportingFreqLimiter_GetNextExpiry_LongTime(t *testing.T) {
+    detectionReportingFrequencyLimiter := GetDetectionFrequencyLimiter(2, 10, 5)
+    currentTimeMinusTwoMins := time.Now().Add(-2 * time.Minute)
+
+    // Create a ReportingDetails struct with the last reported time set to currentTimeMinusTwoMins and the count of times reported set to 8
+    reportingDetails := ReportingDetails{lastReported: currentTimeMinusTwoMins, countOfTimesReported: 8}
+
+    // Add the ReportingDetails struct to the cache of the detection reporting frequency limiter with the key "Ethernet0"
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"] = &reportingDetails
+
+    nextExpiryKey, nextExpiry := detectionReportingFrequencyLimiter.GetNextExpiry()
+    assert := assert.New(t)
+    assert.Equal("Ethernet0", nextExpiryKey, "Next expiry key is expected to be Ethernet0")
+
+    // Assert that the next expiry time is the last reported time plus the initial reporting frequency in minutes
+    assert.True(currentTimeMinusTwoMins.Add(time.Duration(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).SubsequentReportingFreqInMins)*time.Minute).Equal(nextExpiry), "Next expiry time is not as expected")
+}
+
+/* Validate that GetNextExpiry returns the correct next expiry when there are multiple entries in the cache */
+func Test_DetectionReportingFreqLimiter_GetNextExpiry_MultipleEntries(t *testing.T) {
+    detectionReportingFrequencyLimiter := GetDefaultDetectionFrequencyLimiter()
+    currentTimeMinusTwoMins0 := time.Now().Add(-10 * time.Minute)
+    currentTimeMinusTwoMins1 := time.Now().Add(-20 * time.Minute)
+    currentTimeMinusTwoMins2 := time.Now().Add(-30 * time.Minute)
+
+    // Add multiple entries to the cache
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"] = &ReportingDetails{lastReported: currentTimeMinusTwoMins0, countOfTimesReported: 8}
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet1"] = &ReportingDetails{lastReported: currentTimeMinusTwoMins1, countOfTimesReported: 8}
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet2"] = &ReportingDetails{lastReported: currentTimeMinusTwoMins2, countOfTimesReported: 8}
+
+    nextExpiryKey, nextExpiry := detectionReportingFrequencyLimiter.GetNextExpiry()
+
+    assert := assert.New(t)
+    assert.Equal("Ethernet2", nextExpiryKey, "Next expiry key is expected to be Ethernet2")
+    // Assert that the next expiry time is the last reported time plus the initial reporting frequency in minutes
+    assert.True(currentTimeMinusTwoMins2.Add(time.Duration(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).initialReportingFreqInMins)*time.Minute).Equal(nextExpiry), "Next expiry time is not as expected")
+}
+
+// * Validate that DeleteCache deletes an entry */
+func Test_DetectionReportingFreqLimiter_DeleteCache(t *testing.T) {
+    detectionReportingFrequencyLimiter := GetDefaultDetectionFrequencyLimiter()
+    currentTimeMinusTwoMins := time.Now().Add(-2 * time.Minute)
+    reportingDetails := ReportingDetails{lastReported: currentTimeMinusTwoMins, countOfTimesReported: 8}
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"] = &reportingDetails
+
+    detectionReportingFrequencyLimiter.DeleteCache("Ethernet0")
+
+    assert := assert.New(t)
+    assert.Nil(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"], "Cache entry is expected to be removed")
+}
+
+/* Validate that DeleteCache deletes an entry when there are multiple entries in the cache */
+func Test_DetectionReportingFreqLimiter_DeleteCache_MultipleEntries(t *testing.T) {
+    detectionReportingFrequencyLimiter := GetDefaultDetectionFrequencyLimiter()
+
+    // Add multiple entries to the cache
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"] = &ReportingDetails{lastReported: time.Now().Add(-10 * time.Minute), countOfTimesReported: 8}
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet1"] = &ReportingDetails{lastReported: time.Now().Add(-20 * time.Minute), countOfTimesReported: 8}
+    detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet2"] = &ReportingDetails{lastReported: time.Now().Add(-30 * time.Minute), countOfTimesReported: 8}
+
+    detectionReportingFrequencyLimiter.DeleteCache("Ethernet1")
+
+    assert := assert.New(t)
+    assert.Nil(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet1"], "Cache entry for Ethernet1 is expected to be removed")
+    assert.NotNil(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet0"], "Cache entry for Ethernet0 is expected to be present")
+    assert.NotNil(detectionReportingFrequencyLimiter.(*PluginReportingFrequencyLimiter).cache["Ethernet2"], "Cache entry for Ethernet2 is expected to be present")
 }
 
 type MockElement struct {

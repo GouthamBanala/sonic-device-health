@@ -3,6 +3,7 @@ package libtest
 import (
     "fmt"
     "lom/src/lib/lomcommon"
+    . "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
 
     "github.com/stretchr/testify/assert"
@@ -27,6 +28,10 @@ import (
     //"errors"
     "io/ioutil"
 )
+
+func init() {
+    InitSyslogWriter("")
+}
 
 //----------------------------------------- Test GoroutineTracker ---------------------------------------- //
 

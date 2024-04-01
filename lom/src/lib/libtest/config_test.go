@@ -8,6 +8,10 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
+func init() {
+    InitSyslogWriter("")
+}
+
 /* Validates GetFloatConfigFromMapping for various config keys */
 func Test_GetFloatConfigFromMapping(t *testing.T) {
     map1 := map[string]interface{}{"abc": 123.99}
