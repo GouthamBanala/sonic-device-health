@@ -135,6 +135,8 @@ with open('$file', 'w') as f:
 #
 # Returns:
 # 0 if the installation was successful, 1 otherwise.
+# To-Do: Goutham : 1) Differentiate between full success install and failed install.
+#                  2) If rollback failed, call cleanup and return false.
 function install() {    
     # Create the lom persistent directory called /mnt/flash/lom
     if [ ! -d "$LOM_DIR" ]; then
@@ -272,7 +274,7 @@ function install_from_event_handler() {
         add_config "install_type" "\"after_boot\"" "$ACTIVE_INSTALLER_DIR/$INSTALL_PARAMS_FILE"
         return 0
     else
-        log "Installation failed" $LINENO ${FUNCNAME[0]}
+        log "Installation failed from boot event handler" $LINENO ${FUNCNAME[0]}
         clean "False"
         # Write the failed status to the file
         rm -f "$ACTIVE_INSTALLER_DIR/$INSTALL_PARAMS_FILE"

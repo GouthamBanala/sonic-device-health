@@ -555,7 +555,7 @@ type SubscriptionBasedPluginUtil struct {
     requestFunc             func(*lomipc.ActionRequestData, context.Context, bool) (*lomipc.ActionResponseData, error) // Handles subscription request in plugin
     shutdownFunc            func() error                                                                               // handles the shutdown in the plugin
     PluginName              string
-    shutDownInitiated       atomic.Bool // shutDownInitiated is a flag that indicates whether the shutdown of the plugin has been initiated
+    isShutDownInitiated     atomic.Bool // isShutDownInitiated is a flag that indicates whether the shutdown of the plugin has been initiated
     numOfConsecutiveErrors  atomic.Uint64
     responseChannel         chan *lomipc.ActionResponseData
     ctx                     context.Context
@@ -643,7 +643,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Request(hbchan c
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Started Request() for (%s)", subscriptionBasedPluginUtil.PluginName)
 
     // If shutdown has been initiated, log an error and return an aborted response
-    if subscriptionBasedPluginUtil.shutDownInitiated.Load() {
+    if subscriptionBasedPluginUtil.isShutDownInitiated.Load() {
         subscriptionBasedPluginUtil.pluginLogger.LogError("Request called after shutdown for (%s)", subscriptionBasedPluginUtil.PluginName)
         return GetResponse(request, "", "", ResultCodeAborted, ResultStringFailure)
     }
@@ -722,6 +722,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) publishHeartBeat
  *
  * This function does not return a value.
  */
+// To-Do : Goutham : Optimize this. Check if restartConnection flag is needed or not.
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) handleRequest(request *lomipc.ActionRequestData) {
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Subscription handler initialized for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
     // Initialize the backoffTimeSecs timer
@@ -759,7 +760,7 @@ loop:
         select {
         case data := <-goroutineResponseCh:
             // If a shutdown has been initiated, stop processing updates
-            if subscriptionBasedPluginUtil.shutDownInitiated.Load() {
+            if subscriptionBasedPluginUtil.isShutDownInitiated.Load() {
                 break loop
             }
 
@@ -772,6 +773,7 @@ loop:
             return
 
         case err := <-errCh:
+            //To-Do : Goutham : when there is max retries, need a way to stop and return error. Ensure engine does not call again after request method fails.
             //unhealthy execution
             subscriptionBasedPluginUtil.numOfConsecutiveErrors.Add(1)
             subscriptionBasedPluginUtil.pluginLogger.LogError("Incremented consecutiveError count for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
@@ -825,7 +827,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Shutdown() error
     }
 
     subscriptionBasedPluginUtil.cancelCtxFunc()
-    subscriptionBasedPluginUtil.shutDownInitiated.Store(true)
+    subscriptionBasedPluginUtil.isShutDownInitiated.Store(true)
     subscriptionBasedPluginUtil.shutdownFunc()
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Shutdown successful for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
     return nil
