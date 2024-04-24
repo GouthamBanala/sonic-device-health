@@ -140,6 +140,7 @@ type gnmiServerConnector struct {
 
 var (
     // gnmiServerConnectorInstances is a map that holds the GNMI server connector instances for each server.
+    // Servers are possibly terminAttr server & openconfig server
     // The key is the server name and the value is the corresponding GNMI server connector instance.
     gnmiServerConnectorInstances = make(map[string]*gnmiServerConnector)
 

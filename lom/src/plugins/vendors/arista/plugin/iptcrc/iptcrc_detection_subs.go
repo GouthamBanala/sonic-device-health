@@ -1,6 +1,9 @@
 //go:build ignore
 // +build ignore
 
+// Subscription based implementation is parkd here just because of bug in 4.26 eos related to gnmi subscription
+// feature. Its fixed in 4.29.
+
 /*
  * Arista IPTCRC Detection Plugin with TLS Security
  *

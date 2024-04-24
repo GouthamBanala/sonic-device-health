@@ -608,6 +608,7 @@ class AristaSwitchEAPIHelper(object):
 
         return True, list(core_files1)
 
+    # To-Do : Goutham : Add 30 sec average util to avoid false positives
     def get_hardware_capacity_utilization(self, percentage_threshold=0):
         """
         Run the 'show hardware capacity utilization percent exceed <percentage_threshold> | json' command and return

@@ -90,6 +90,8 @@ def setup(installation_dir):
     Raises:
     Exception: If there is an error during setup.
     """
+    # To-Do : Goutham : 1. This is a shared signature across all vendors. Must consult team before changing.
+            # 2. Add finally to put a shared vendor signature for install end.
     global g_lom_engine_path, g_lom_plugin_mgr_path, g_lom_cli_path, g_config_dir, g_procs_keys, g_installer_dir, \
             g_switch_cli_handler, g_switch_eapi_handler
     existing_install_config = {}
@@ -179,6 +181,7 @@ def start_installation(installation_path):
             return False, None 
         logger.log("Setup successful") 
         
+        # To-Do : Goutham : Add else case and add log if event handler support is not there. Also combine both checks.
         # Event handler support. After reboot, the event handler is triggered and it calls install_from_event_handler() function.
         if EVENT_HANDLER_SUPPORT:            
             # Add event Handler 
@@ -226,7 +229,7 @@ def start_installation(installation_path):
             return False, None
 
         # Common checks before installation
-        before_data = common_checks()
+        before_data = host_checks()
 
         ## Installation Start 
         # Start the daemon's in the management namespace
@@ -246,10 +249,10 @@ def start_installation(installation_path):
             return False, None
         
         # Common checks after installation
-        after_data = common_checks()
+        after_data = host_checks()
 
         # Validate common checks
-        if not validate_common_checks(before_data, after_data):
+        if not validate_host_checks(before_data, after_data):
             logger.log("Error: Common checks validation comparing before and after installation failed")
             return False, None
         
@@ -569,6 +572,7 @@ def pre_checks():
     Returns:
     bool: True if all checks pass, False otherwise.
     """
+    # To-Do : Goutham : Add precheck to match eos version with the supported lom installer version.
     try:
         # Check if each configuration file exists
         config_files = [PROC_CONF_FILE, ACTIONS_CONF_FILE, BINDINGS_CONF_FILE, GLOBALS_CONF_FILE]
@@ -621,9 +625,10 @@ def post_checks():
         Returns:
         bool: True if all checks pass, False otherwise.
     """
+    # To-Do : Goutham : Check for heartbeats, etc in future via eventd and via gnmi server.
     return True
 
-def common_checks():
+def host_checks():
     """
     This function is responsible for performing common checks and gathering system information.
 
@@ -660,7 +665,7 @@ def common_checks():
 
     return data
 
-def validate_common_checks(before_data, after_data):
+def validate_host_checks(before_data, after_data):
     """
     This function is responsible for validating the results of common checks before and after installation.
 

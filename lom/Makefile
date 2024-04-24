@@ -138,6 +138,8 @@ prepare_temp_src:
 # 3. In each vendor root dir, have this file as "inventory.go"
 # 4. Right inventrory.go gets copied while building based on chosen vendor.
 # Update import statements in pluginmgr_main.go to include platform specific plugins. This is required since vendor specific files must be imported. 
+# Update Process : It will Scan the build/src/plugins/vendors/$(BUILD_PLATFORM)/plugin directory and get the plugin names. With it it will add
+# the import statements in pluginmgr_main.go
 update_import_statements:
 	@echo "Updating import statements in $(BUILD_SRC_DIR)/pluginmgr/pluginmgr_main.go..."
 	rm -f $(BUILD_SRC_DIR)/pluginmgr/pluginmgr_main.go; \
@@ -270,7 +272,6 @@ clean-aggregate-file_coverage:
 
 COMMON_DEPS := prepare_temp_src update_import_statements update_imports_path format_code add-extract_file_coverage add-aggregate_file_coverage \
 			  $(ENGINE_BIN) $(CMN_C_LIB) $(PLUGIN_MANAGER_BIN) $(CLI_BIN) gnmi-tools $(GNMI_SERVER_BIN)
-
 COMMON_DEPS_TEST := $(LIB_TEST) $(ENGINE_TEST) $(PLUGIN_MANAGER_TEST) $(PLUGINS_COMMON_TEST) $(PY_TEST) $(GNMI_SERVER_TEST)
 
 SONIC_DEPS := $(SONIC_DBCLIENT_TEST) $(SONIC_LINK_CRC_TEST) $(SONIC_LINK_CRC_MOCKER_TEST) $(INTEGRATION_TEST_BIN)

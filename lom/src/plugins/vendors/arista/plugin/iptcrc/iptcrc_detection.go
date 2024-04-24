@@ -1,7 +1,7 @@
 /*
  * Arista IPTCRC Detection Plugin with TLS Security
  *
- * This plugin is designed to detect IPTCRC errors for Arista switches. It subscribes to GNMI notifications from the GNMI server,
+ * This plugin is designed to detect IPTCRC errors for Arista switches. It does get request to GNMI path from the GNMI server,
  * processes those notifications, and reports any anomalies found. Specifically, it listens to the "sand_counters_gnmi_path" for
  * notifications about IPTCRC errors.
  *
@@ -42,9 +42,7 @@ const (
     gnmi_subscription_prefix = ""
 
     detection_freq_in_secs_default = 30 // seconds
-    error_backoff_time_default     = 60 // seconds
-    //periodic_subscription_interval_default = 24 // 24 hours
-    iptcrc_counter_name_default = "IptCrcErrCnt"
+    iptcrc_counter_name_default    = "IptCrcErrCnt"
 
     /* Config Keys for accessing cfg file */
     initial_detection_reporting_freq_in_mins_config_key    = "initial_detection_reporting_frequency_in_mins"
@@ -57,17 +55,18 @@ const (
     detection_freq_in_secs_config_key                      = "DetectionFreqInSecs"
 )
 
+/* default logger */
+var logger *plugins_common.PluginLogger
+
 type IPTCRCDetectionPlugin struct {
     reportingFreqLimiter                       plugins_common.PluginReportingFrequencyLimiterInterface // Stores Count & Timestamp of gnmi notification for each chipId
     plugins_common.PeriodicDetectionPluginUtil                                                         // Util to handle the subscription based plugin
     aristaGnmiSession                          plugins_common.IGNMISession                             // Helpers to communicate with GNMI server
     runningChipDataMap                         map[string]*arista_common.LCChipData                    // Map to store the chipId and its corresponding LCChipData extracted from gnmi notifications
     subscriptionPaths                          []string                                                // List of subscription paths for this plugin
-    error_backoff_time_secs                    int                                                     // In sec. used to backoff when there is an error in gnmi subscription
-    //periodic_subscription_interval_hours       int                                                     // In hours. used to restart the gnmi subscription periodically
-    sessionMutex sync.Mutex // Mutex to ensure thread-safe access to aristaGnmiSession
-    sessionValid bool       // Flag to indicate if the GNMI session is valid
-    counterName  string     // Name of the counter to be monitored
+    sessionMutex                               sync.Mutex                                              // Mutex to ensure thread-safe access to aristaGnmiSession
+    sessionValid                               bool                                                    // Flag to indicate if the GNMI session is valid
+    counterName                                string                                                  // Name of the counter to be monitored
 }
 
 /* Return a new instance of the plugin */
@@ -92,17 +91,20 @@ func init() {
 func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) Init(actionConfig *lomcommon.ActionCfg_t) error {
     lomcommon.LogInfo("Started Init() for (%s)", detection_plugin_name)
 
+    //Initialize the logger
+    if logger == nil {
+        logger = plugins_common.NewDefaultLogger(detection_plugin_prefix)
+    }
+
     // Check if the plugin name is valid
     if actionConfig.Name != detection_plugin_name {
-        return lomcommon.LogError("Invalid plugin name passed. actionConfig.Name: %s", actionConfig.Name)
+        return logger.LogError("Invalid plugin name passed. actionConfig.Name: %s", actionConfig.Name)
     }
 
     // Set defaults
     initial_detection_reporting_frequency_in_mins := lomcommon.GetConfigMgr().GetGlobalCfgInt("INITIAL_DETECTION_REPORTING_FREQ_IN_MINS")
     subsequent_detection_reporting_frequency_in_mins := lomcommon.GetConfigMgr().GetGlobalCfgInt("SUBSEQUENT_DETECTION_REPORTING_FREQ_IN_MINS")
     initial_detection_reporting_max_count := lomcommon.GetConfigMgr().GetGlobalCfgInt("INITIAL_DETECTION_REPORTING_MAX_COUNT")
-    iptCRCDetectionPlugin.error_backoff_time_secs = error_backoff_time_default
-    //iptCRCDetectionPlugin.periodic_subscription_interval_hours = periodic_subscription_interval_default
     iptCRCDetectionPlugin.counterName = iptcrc_counter_name_default
     chipid_name_mappings_file := ""
     detectionFreqInSecs := int(detection_freq_in_secs_default)
@@ -114,13 +116,11 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) Init(actionConfig *lomcommon
         initial_detection_reporting_frequency_in_mins = lomcommon.GetConfigFromMapping(resultMap, initial_detection_reporting_freq_in_mins_config_key, lomcommon.GetConfigMgr().GetGlobalCfgInt("INITIAL_DETECTION_REPORTING_FREQ_IN_MINS")).(int)
         subsequent_detection_reporting_frequency_in_mins = lomcommon.GetConfigFromMapping(resultMap, subsequent_detection_reporting_freq_in_mins_config_key, lomcommon.GetConfigMgr().GetGlobalCfgInt("SUBSEQUENT_DETECTION_REPORTING_FREQ_IN_MINS")).(int)
         initial_detection_reporting_max_count = lomcommon.GetConfigFromMapping(resultMap, initial_detection_reporting_max_count_config_key, lomcommon.GetConfigMgr().GetGlobalCfgInt("INITIAL_DETECTION_REPORTING_MAX_COUNT")).(int)
-        iptCRCDetectionPlugin.error_backoff_time_secs = lomcommon.GetConfigFromMapping(resultMap, error_backoff_time_in_secs_config_key, error_backoff_time_default).(int)
-        //iptCRCDetectionPlugin.periodic_subscription_interval_hours = lomcommon.GetConfigFromMapping(resultMap, periodic_subscription_interval_in_hours_config_key, periodic_subscription_interval_default).(int)
         iptCRCDetectionPlugin.counterName = lomcommon.GetConfigFromMapping(resultMap, iptcrc_counter_name_config_key, iptcrc_counter_name_default).(string)
         chipid_name_mappings_file = lomcommon.GetConfigFromMapping(resultMap, chipid_name_mappings_file_config_key, "").(string)
         detectionFreqInSecs = int(lomcommon.GetFloatConfigFromMapping(resultMap, detection_freq_in_secs_config_key, detection_freq_in_secs_default))
     } else {
-        lomcommon.LogError("Failed to parse actionConfig.ActionKnobs: %v. Using defaults", jsonErr)
+        logger.LogError("Failed to parse actionConfig.ActionKnobs: %v. Using defaults", jsonErr)
     }
 
     // Initialize the reporting frequency limiter for this plugin
@@ -133,14 +133,14 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) Init(actionConfig *lomcommon
     var err error
     err = arista_common.LoadChipMappings(chipid_name_mappings_file)
     if err != nil {
-        return lomcommon.LogError("Failed to initialize chipId to chipName mapping: %v", err)
+        return logger.LogError("Failed to initialize chipId to chipName mapping: %v", err)
     }
 
     // Initialize the common PeriodicDetectionPluginUtil utility
     err = iptCRCDetectionPlugin.PeriodicDetectionPluginUtil.Init(actionConfig.Name, detectionFreqInSecs, actionConfig, iptCRCDetectionPlugin.executeIPTCRCDetection,
         iptCRCDetectionPlugin.executeShutdown)
     if err != nil {
-        return lomcommon.LogError("Failed to initialize SubscriptionBasedPluginUtil: %v", err)
+        return logger.LogError("Failed to initialize SubscriptionBasedPluginUtil: %v", err)
     }
 
     // Define the subscription paths for this plugin
@@ -148,7 +148,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) Init(actionConfig *lomcommon
         sand_counters_gnmi_path,
     }
 
-    lomcommon.LogInfo("Successfully Init() for (%s)", detection_plugin_name)
+    logger.LogInfo("Successfully Init() for (%s)", detection_plugin_name)
     return nil
 }
 
@@ -168,13 +168,13 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) Init(actionConfig *lomcommon
  * If the context is done (i.e., a shutdown has been initiated), the function stops processing updates and returns.
  */
 func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(request *lomipc.ActionRequestData, isExecutionHealthy *bool, ctx context.Context) *lomipc.ActionResponseData {
-    lomcommon.LogInfo("IPTCRC Detection Starting")
+    logger.LogInfo("IPTCRC Detection Starting")
 
     // Create a new GNMI session with the Arista GNMI server(mutex lock not needed). Note that new session is not created if the session is already valid.
     var err error
     iptCRCDetectionPlugin.aristaGnmiSession, err = plugins_common.NewGNMISession(nil, nil, nil)
     if err != nil {
-        lomcommon.LogError("Failed to create arista gnmi server session : %v", err)
+        logger.LogError("Failed to create arista gnmi server session : %v", err)
         *isExecutionHealthy = false
         return nil
     }
@@ -183,10 +183,9 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
     defer func() {
         iptCRCDetectionPlugin.sessionMutex.Lock()
         defer iptCRCDetectionPlugin.sessionMutex.Unlock()
-
         if iptCRCDetectionPlugin.sessionValid {
             if err := iptCRCDetectionPlugin.aristaGnmiSession.Close(); err != nil {
-                lomcommon.LogError("Failed to close arista gnmi server session: %v", err)
+                logger.LogError("Failed to close arista gnmi server session: %v", err)
             }
             iptCRCDetectionPlugin.sessionValid = false
         }
@@ -195,39 +194,40 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
     // get the counters via gnmi get request
     response, err := iptCRCDetectionPlugin.aristaGnmiSession.Get(gnmi_subscription_prefix, iptCRCDetectionPlugin.subscriptionPaths)
     if err != nil {
-        lomcommon.LogError("Failed to get counters via gnmi get request: %v", err)
+        logger.LogError("Failed to get counters via gnmi get request: %v", err)
         *isExecutionHealthy = false
         return nil
     }
 
     // process the gnmi get response to get the IPTCRC counter details
     notifications, err := iptCRCDetectionPlugin.aristaGnmiSession.ProcessGet(response)
+    fmt.Printf("response: %v\n", response)
     if err != nil {
-        lomcommon.LogError("Failed to process gnmi get response: %v", err)
+        logger.LogError("Failed to process gnmi get response: %v", err)
         *isExecutionHealthy = false
         return nil
     }
     *isExecutionHealthy = true
-    // process gnmi subscribe notification to extract the IPTCRC error details
+    // process gnmi notification to extract the IPTCRC error details
     for _, notification := range notifications {
         select {
         case <-ctx.Done():
-            lomcommon.LogInfo("Stopping processing updates")
+            logger.LogInfo("Aborting processing updates")
             return nil
         default:
         }
 
         chipsWithIPTCRCErrorToReport, chipsWithIPTCRCErrorToDelete, err := iptCRCDetectionPlugin.processGNMINotification(notification)
         if err != nil {
-            lomcommon.LogError("Failed to process gnmi subscription notification: %v", err)
+            logger.LogError("Failed to process gnmi subscription notification: %v", err)
             continue
         }
 
         // Report the anomaly if there are any chips with IPTCRC error to Engine
         // To-Do - Goutham : Need to break it in to multiple instances with each instance as a separate anomaly
         if len(chipsWithIPTCRCErrorToReport) > 0 {
-            lomcommon.LogInfo("IPTCRCDetection Anomaly Detected")
-            lomcommon.LogInfo("Chips with IPTCRC error: %v", chipsWithIPTCRCErrorToReport)
+            logger.LogInfo("IPTCRCDetection Anomaly Detected")
+            logger.LogInfo("Chips with IPTCRC error: %v", chipsWithIPTCRCErrorToReport)
 
             // Convert chip IDs to chip names
             chipsWithIPTCRCErrorNames := make([]string, len(chipsWithIPTCRCErrorToReport))
@@ -243,8 +243,8 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
 
         // Delete the anomaly if there are any chips with IPTCRC error to be cleared
         if len(chipsWithIPTCRCErrorToDelete) > 0 {
-            lomcommon.LogInfo("IPTCRCDetection Anomaly Cleared")
-            lomcommon.LogInfo("Chips with IPTCRC error cleared: %v", chipsWithIPTCRCErrorToDelete)
+            logger.LogInfo("IPTCRCDetection Anomaly Cleared")
+            logger.LogInfo("Chips with IPTCRC error cleared: %v", chipsWithIPTCRCErrorToDelete)
 
             iptCRCDetectionPlugin.checkForClearedErrors(chipsWithIPTCRCErrorToDelete)
         }
@@ -293,17 +293,17 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) checkForClearedErrors(chipsW
  * - An error. This is nil if the function completed successfully and non-nil if an error occurred.
  */
 func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(notification interface{}) ([]string, []string, error) {
-    // process gnmi subscribe notification
+    // process gnmi notification
     parsedNotification, err := plugins_common.ParseNotification(notification)
     if err != nil {
-        lomcommon.LogError("Failed to parse gnmi subscription notification: %v", err)
+        logger.LogError("Failed to parse gnmi subscription notification: %v", err)
         return nil, nil, err
     }
 
     // get the prefix from the notification
     vprefix, err := plugins_common.GetPrefix(parsedNotification)
     if err != nil {
-        lomcommon.LogError("Failed to get prefix from gnmi notification: %v", err)
+        logger.LogError("Failed to get prefix from gnmi notification: %v", err)
         return nil, nil, err
     }
     vprefixStr := "/" + strings.Join(vprefix, "/")
@@ -315,7 +315,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
     // This is a special case for arista switches which gives the no of entries in the table.
     notificationType := plugins_common.CheckNotificationType(parsedNotification)
 
-    lomcommon.LogInfo("executeIPTCRCDetection - handling prefix: %s for notification type: %s, counter Name :  %s", vprefixStr, notificationType, iptCRCDetectionPlugin.counterName)
+    logger.LogInfo("executeIPTCRCDetection - handling prefix: %s for notification type: %s, counter Name :  %s", vprefixStr, notificationType, iptCRCDetectionPlugin.counterName)
 
     // Check if the notification is for Standard gnmi path and not for prefix ending in _counts
     if vprefixStr == sand_counters_gnmi_path {
@@ -325,7 +325,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
             // parse the notification updates to get the IPTCRC counter details
             counterDetailsMap, err := arista_common.GetSandCounterUpdates(parsedNotification, iptCRCDetectionPlugin.counterName)
             if err != nil {
-                lomcommon.LogError("Failed to get IPTCRC counter updates from gnmi notification: %v", err)
+                logger.LogError("Failed to get IPTCRC counter updates from gnmi notification: %v", err)
                 return nil, nil, err
             }
 
@@ -337,7 +337,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
                 // serialize the counterDetails to currentChipData struct which has all the IPTCRC related counter details for current chipId
                 currentChipData, err := arista_common.ConvertToChipData(counterDetails)
                 if err != nil {
-                    lomcommon.LogError("Failed to serialize counter details for chip %s: %v", chipId, err)
+                    logger.LogError("Failed to serialize counter details for chip %s: %v", chipId, err)
                     continue
                 }
 
@@ -349,12 +349,12 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
                         chipsWithIPTCRCErrorToReport = append(chipsWithIPTCRCErrorToReport, chipId)
                     } else {
                         // If the reporting frequency is not met, then skip reporting for this chip
-                        lomcommon.LogInfo("executeIPTCRCDetection - skipping reporting for chip %s as reporting frequency is not met", chipId)
+                        logger.LogInfo("executeIPTCRCDetection - skipping reporting for chip %s as reporting frequency is not met", chipId)
                     }
                     iptCRCDetectionPlugin.runningChipDataMap[chipId] = currentChipData
                 } else {
                     // invalid drop count value
-                    lomcommon.LogInfo("executeIPTCRCDetection - invalid drop count value %d for chip %s", currentChipData.DropCount, chipId)
+                    logger.LogInfo("executeIPTCRCDetection - invalid drop count value %d for chip %s", currentChipData.DropCount, chipId)
                     continue
                 }
             }
@@ -365,7 +365,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
             // parse the notification deletes to get the IPTCRC counter details
             counterDetailsMap, err := arista_common.GetSandCounterDeletes(parsedNotification, iptCRCDetectionPlugin.counterName)
             if err != nil {
-                lomcommon.LogError("Failed to get IPTCRC counter deletes from gnmi notification: %v", err)
+                logger.LogError("Failed to get IPTCRC counter deletes from gnmi notification: %v", err)
                 return nil, nil, err
             }
 
@@ -384,21 +384,21 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
 }
 
 func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeShutdown() error {
-    lomcommon.LogInfo("Shutdown initiated for (%s)", detection_plugin_name)
+    logger.LogInfo("Shutdown initiated for (%s)", detection_plugin_name)
 
     iptCRCDetectionPlugin.sessionMutex.Lock()
     defer iptCRCDetectionPlugin.sessionMutex.Unlock()
 
     if iptCRCDetectionPlugin.sessionValid {
-        iptCRCDetectionPlugin.aristaGnmiSession.Unsubscribe()
+        //iptCRCDetectionPlugin.aristaGnmiSession.Unsubscribe()
         err := iptCRCDetectionPlugin.aristaGnmiSession.Close()
         if err != nil {
-            lomcommon.LogError("Failed to close arista gnmi server session: %v", err)
+            logger.LogError("Failed to close arista gnmi server session: %v", err)
         }
         //iptCRCDetectionPlugin.aristaGnmiSession = nil
         iptCRCDetectionPlugin.sessionValid = false
     }
-    lomcommon.LogInfo("Shutdown completed for (%s)", detection_plugin_name)
+    logger.LogInfo("Shutdown completed for (%s)", detection_plugin_name)
     return nil
 }
 

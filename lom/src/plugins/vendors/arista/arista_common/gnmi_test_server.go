@@ -2,9 +2,9 @@
  * gNMI Server with TLS Security
  *
  * This file implements a simple gNMI (gRPC Network Management Interface) server for testing purposes with added TLS security.
- * The server supports the gNMI Subscribe method, which allows a client to subscribe to updates and deletes
- * for a specific path in the data tree. The server stores samples of data internally and can push these
- * samples to the client when they connect and subscribe to the correct path.
+ * The server supports the gNMI Subscribe and Get methods, which allow a client to subscribe to updates and deletes
+ * for a specific path in the data tree, and to retrieve the latest sample from the server, respectively.
+ * The server stores samples of data internally and can push these samples to the client when they connect and subscribe to the correct path.
  *
  * The server also supports the gNMI Set and Capabilities methods, but these are not currently implemented.
  *
@@ -26,7 +26,7 @@
  * To use this file, you can run the main function, which starts the server and sets some initial data.
  * You can then connect a gNMI client to the server and subscribe to updates and deletes for the path
  * /Smash/hardware/counter/internalDrop/SandCounters/internalDrop. The client will receive the initial data
- * and any subsequent updates or deletes.
+ * and any subsequent updates or deletes. The client can also send a Get request to retrieve the latest sample from the server.
  *
  * Currently limited to one client at a time.
  */
@@ -37,6 +37,7 @@ import (
     "context"
     "crypto/tls"
     "crypto/x509"
+    "errors"
     "fmt"
     "io"
     "io/ioutil"
@@ -684,7 +685,7 @@ func GenerateFakeResponsevalid() *gnmi.SubscribeResponse {
 }
 
 // UpdateDBFakeResponse updates the server's internal storage with a fake response and sends it to the client if connected.
-// Note : Fake responses are stored in DB
+// Note : Fake responses are not stored in DB
 func (s *GNMITestServer) UpdateDBFakeResponse() {
     lomcommon.LogInfo("Test GNMI Server : Generating fake response")
 
@@ -709,7 +710,7 @@ func (s *GNMITestServer) UpdateDBFakeResponse() {
 }
 
 // GenerateFakeResponseNoPrefix generates a fake SubscribeResponse for testing without a prefix.
-// Note : Fake responses are stored in DB
+// Note : Fake responses are not stored in DB
 func GenerateFakeResponseNoPrefix() *gnmi.SubscribeResponse {
     // Create a fake update
     update := &gnmi.Update{
@@ -778,6 +779,61 @@ func (s *GNMITestServer) Capabilities(ctx context.Context, req *gnmi.CapabilityR
     lomcommon.LogInfo("Test GNMI Server : Capabilities request received")
     // Not implemented
     return &gnmi.CapabilityResponse{}, nil
+}
+
+func (s *GNMITestServer) Get(ctx context.Context, req *gnmi.GetRequest) (*gnmi.GetResponse, error) {
+    lomcommon.LogInfo("Test GNMI Server : Get request received")
+
+    // Define the correct path
+    correctPath := []string{"Smash", "hardware", "counter", "internalDrop", "SandCounters", "internalDrop"}
+
+    // Check if the client is requesting the correct path
+    clientPaths := req.GetPath()
+    for _, clientPath := range clientPaths {
+        pathElems := clientPath.GetElem()
+        if len(pathElems) != len(correctPath) {
+            continue
+        }
+
+        match := true
+        for i, elem := range pathElems {
+            if elem.GetName() != correctPath[i] {
+                match = false
+                break
+            }
+        }
+
+        if match {
+            // Create a response
+            response := &gnmi.GetResponse{}
+
+            // Get the latest sample
+            var latestSample map[string]interface{}
+            var latestKey string
+            for key, sample := range s.samples {
+                if latestSample == nil || key > latestKey {
+                    latestSample = sample
+                    latestKey = key
+                }
+            }
+
+            // Generate a response for the latest sample
+            if latestSample != nil {
+                sampleDataArray := []map[string]interface{}{latestSample}
+                responseSample := generateResponse(sampleDataArray)
+
+                if responseSample == nil {
+                    return nil, lomcommon.LogError("Test GNMI Server : Failed to generate response")
+                }
+
+                response.Notification = append(response.Notification, responseSample.GetUpdate())
+            }
+
+            return response, nil
+        }
+    }
+
+    return nil, errors.New("incorrect path")
 }
 
 // Subscribe handles a SubscribeRequest from the client.
