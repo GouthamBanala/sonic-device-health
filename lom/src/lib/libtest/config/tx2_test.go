@@ -5,6 +5,8 @@ import (
     "lom/src/lib/lomcommon"
     . "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
+    "path/filepath"
+    "strings"
 
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/mock"
@@ -841,5 +843,464 @@ func TestPrintServerResponse(t *testing.T) {
     expectedOutput = "Invalid response data"
     if output != expectedOutput {
         t.Errorf("PrintServerResponse() returned unexpected output. Expected: %s, Got: %s", expectedOutput, output)
+    }
+}
+
+func TestSetLoMRunMode(t *testing.T) {
+    // Set lomRunMode to LoMRunMode_Test
+    SetLoMRunMode(LoMRunMode_Test)
+    if GetLoMRunMode() != LoMRunMode_Test {
+        t.Errorf("Expected lomRunMode to be 'LoMRunMode_Test', but got %v", GetLoMRunMode())
+    }
+
+    // Set lomRunMode to LoMRunMode_Prod
+    SetLoMRunMode(LoMRunMode_Prod)
+    if GetLoMRunMode() != LoMRunMode_Prod {
+        t.Errorf("Expected lomRunMode to be 'LoMRunMode_Prod', but got %v", GetLoMRunMode())
+    }
+}
+
+func TestGetSyslogFacilityLevelFromConfig(t *testing.T) {
+    // Test case where JSON file can be read and parsed, and SYSLOG_FACILITY_LEVEL is found
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write the content of globals.conf.json to the file
+        content := `{
+            "VENDOR": "Arista",
+            "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetSyslogFacilityLevelFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        facilityLevel, err := GetSyslogFacilityLevelFromConfig(dir)
+        if err != nil {
+            t.Fatal(err)
+        }
+
+        // Check that the returned value is as expected
+        expected := "LOG_LOCAL4"
+        if facilityLevel != expected {
+            t.Errorf("Expected %s, got %s", expected, facilityLevel)
+        }
+    }
+
+    // Test case where JSON file cannot be read
+    {
+        _, err := GetSyslogFacilityLevelFromConfig("/nonexistent")
+        if err == nil {
+            t.Error("Expected error, got nil")
+        }
+    }
+
+    // Test case where JSON file cannot be parsed
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write invalid JSON to the file
+        content := `{
+            "VENDOR": "Arista",
+            "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4",
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetSyslogFacilityLevelFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        _, err = GetSyslogFacilityLevelFromConfig(dir)
+        if err == nil {
+            t.Error("Expected error, got nil")
+        }
+    }
+
+    // Test case where SYSLOG_FACILITY_LEVEL is not found
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write the content of globals.conf.json to the file
+        content := `{
+            "VENDOR": "Arista"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetSyslogFacilityLevelFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        _, err = GetSyslogFacilityLevelFromConfig(dir)
+        if err == nil {
+            t.Error("Expected error, got nil")
+        }
+    }
+}
+
+func TestGetVendorFromConfig(t *testing.T) {
+    // Test case where JSON file can be read and parsed, and VENDOR is found
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write the content of globals.conf.json to the file
+        content := `{
+            "VENDOR": "Arista",
+            "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetVendorFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        vendor, err := GetVendorFromConfig(dir)
+        if err != nil {
+            t.Fatal(err)
+        }
+
+        // Check that the returned value is as expected
+        expected := "Arista"
+        if vendor != expected {
+            t.Errorf("Expected %s, got %s", expected, vendor)
+        }
+    }
+
+    // Test case where JSON file cannot be parsed
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write invalid JSON to the file
+        content := `{
+            "VENDOR": "Arista",
+            "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4",
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetVendorFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        _, err = GetVendorFromConfig(dir)
+        if err == nil {
+            t.Error("Expected error, got nil")
+        }
+    }
+
+    // Test case where VENDOR is not found
+    {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+        defer os.Remove(tmpfile.Name()) // clean up
+
+        // Write the content of globals.conf.json to the file
+        content := `{
+            "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call GetVendorFromConfig with the directory path of the file
+        dir, _ := filepath.Split(tmpfile.Name())
+        dir = strings.TrimSuffix(dir, "/")
+        _, err = GetVendorFromConfig(dir)
+        if err == nil {
+            t.Error("Expected error, got nil")
+        }
+    }
+}
+
+func TestGetConfigFromMapping(t *testing.T) {
+    // Test case where the map is empty
+    {
+        mapping := make(map[string]interface{})
+        defaultValue := "default"
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != defaultValue {
+            t.Errorf("Expected %s, got %v", defaultValue, val)
+        }
+    }
+
+    // Test case where the key is not present in the map
+    {
+        mapping := map[string]interface{}{
+            "otherKey": "value",
+        }
+        defaultValue := "default"
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != defaultValue {
+            t.Errorf("Expected %s, got %v", defaultValue, val)
+        }
+    }
+
+    // Test case where the value in the map is not of the expected type
+    {
+        mapping := map[string]interface{}{
+            "key": 123,
+        }
+        defaultValue := "default"
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != defaultValue {
+            t.Errorf("Expected %s, got %v", defaultValue, val)
+        }
+    }
+
+    // Test case where the value in the map is of the expected type
+    {
+        mapping := map[string]interface{}{
+            "key": "value",
+        }
+        defaultValue := "default"
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != mapping["key"] {
+            t.Errorf("Expected %v, got %v", mapping["key"], val)
+        }
+    }
+
+    // Test case where the expected type is int and the value in the map is a float64
+    {
+        mapping := map[string]interface{}{
+            "key": 123.0,
+        }
+        defaultValue := 0
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != int(mapping["key"].(float64)) {
+            t.Errorf("Expected %v, got %v", int(mapping["key"].(float64)), val)
+        }
+    }
+
+    // Test case where the expected type is float64 and the value in the map is a float64
+    {
+        mapping := map[string]interface{}{
+            "key": 123.0,
+        }
+        defaultValue := 0.0
+        val := GetConfigFromMapping(mapping, "key", defaultValue)
+        if val != mapping["key"] {
+            t.Errorf("Expected %v, got %v", mapping["key"], val)
+        }
+    }
+}
+
+func TestSetAgentName(t *testing.T) {
+    // Test case where a is not an empty string
+    {
+        // Call SetAgentName with a non-empty string
+        SetAgentName("test")
+
+        // Check that agentName is set to the given string
+        if GetAgentName() != "test" {
+            t.Errorf("Expected agentName to be 'test', got '%s'", GetAgentName())
+        }
+    }
+
+    // Test case where a is an empty string
+    {
+        // Call SetAgentName with an empty string
+        SetAgentName("")
+
+        // Check that agentName is set to "lom"
+        if GetAgentName() != "lom" {
+            t.Errorf("Expected agentName to be 'lom', got '%s'", GetAgentName())
+        }
+    }
+}
+
+func TestValidatedVal(t *testing.T) {
+    // Test case where sval is not a valid integer
+    {
+        // Call ValidatedVal with a non-integer string
+        val := ValidatedVal("test", 10, 0, 5, "test")
+
+        // Check that the return value is the default value
+        if val != 5 {
+            t.Errorf("Expected return value to be 5, got %d", val)
+        }
+    }
+
+    // Test case where sval is a valid integer but is greater than max
+    {
+        // Call ValidatedVal with a string that represents an integer greater than max
+        val := ValidatedVal("11", 10, 0, 5, "test")
+
+        // Check that the return value is the default value
+        if val != 5 {
+            t.Errorf("Expected return value to be 5, got %d", val)
+        }
+    }
+
+    // Test case where sval is a valid integer but is less than min
+    {
+        // Call ValidatedVal with a string that represents an integer less than min
+        val := ValidatedVal("-1", 10, 0, 5, "test")
+
+        // Check that the return value is the default value
+        if val != 5 {
+            t.Errorf("Expected return value to be 5, got %d", val)
+        }
+    }
+
+    // Test case where sval is a valid integer and is within the range [min, max]
+    {
+        // Call ValidatedVal with a string that represents an integer within the range [min, max]
+        val := ValidatedVal("7", 10, 0, 5, "test")
+
+        // Check that the return value is the integer represented by sval
+        if val != 7 {
+            t.Errorf("Expected return value to be 7, got %d", val)
+        }
+    }
+}
+
+func TestInitSyslogWriter(t *testing.T) {
+    // Set the LOM_RUN_MODE environment variable to "PROD"
+    os.Setenv("LOM_RUN_MODE", "PROD")
+    defer os.Unsetenv("LOM_RUN_MODE") // clean up
+
+    // Define all log levels
+    logLevels := []string{
+        "LOG_LOCAL0",
+        "LOG_LOCAL1",
+        "LOG_LOCAL2",
+        "LOG_LOCAL3",
+        "LOG_LOCAL4",
+        "LOG_LOCAL5",
+        "LOG_LOCAL6",
+        "LOG_LOCAL7",
+        "INVALID", // This will test the default case
+    }
+
+    for _, level := range logLevels {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+
+        content := `{
+            "SYSLOG_FACILITY_LEVEL" : "` + level + `",
+            "VENDOR": "Arista"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call InitSyslogWriter
+        InitSyslogWriter("/tmp")
+
+        // Remove the file to clean up
+        os.Remove(tmpfile.Name())
+
+    }
+}
+
+func TestInitSyslogWriterwithPrefix(t *testing.T) {
+    // Set the LOM_RUN_MODE environment variable to "PROD"
+    os.Setenv("LOM_RUN_MODE", "PROD")
+    defer os.Unsetenv("LOM_RUN_MODE") // clean up
+
+    // Define all log levels
+    logLevels := []string{
+        "LOG_LOCAL0",
+        "LOG_LOCAL1",
+        "LOG_LOCAL2",
+        "LOG_LOCAL3",
+        "LOG_LOCAL4",
+        "LOG_LOCAL5",
+        "LOG_LOCAL6",
+        "LOG_LOCAL7",
+        "INVALID", // This will test the default case
+    }
+
+    for _, level := range logLevels {
+        // Create a file named globals.conf.json in /tmp
+        tmpfile, err := os.Create("/tmp/globals.conf.json")
+        if err != nil {
+            t.Fatal(err)
+        }
+
+        content := `{
+            "SYSLOG_FACILITY_LEVEL" : "` + level + `",
+            "VENDOR": "Arista"
+        }`
+        if _, err := tmpfile.Write([]byte(content)); err != nil {
+            t.Fatal(err)
+        }
+        if err := tmpfile.Close(); err != nil {
+            t.Fatal(err)
+        }
+
+        // Call InitSyslogWriter
+        InitSyslogWriter("/tmp")
+
+        // Set apprefix and agentName
+        SetPrefix("TestPrefix")
+        SetAgentName("TestAgent")
+
+        // Test LogMessageWithSkip
+        message := LogMessageWithSkip(1, syslog.LOG_INFO, "Test message")
+        expectedStart := fmt.Sprintf("%s-\\d+-%s: .*:Test message", GetAgentName(), GetPrefix())
+        match, _ := regexp.MatchString(expectedStart, message)
+        if !match {
+            t.Errorf("Expected message to match '%s', got '%s'", expectedStart, message)
+        }
+
+        // Remove the file to clean up
+        os.Remove(tmpfile.Name())
     }
 }

@@ -17,6 +17,7 @@ import (
     "github.com/stretchr/testify/mock"
     "google.golang.org/grpc"
 
+    "github.com/openconfig/gnmi/proto/gnmi"
     ext_gnmi "github.com/openconfig/gnmi/proto/gnmi"
 )
 
@@ -383,6 +384,65 @@ func TestSessionGet(t *testing.T) {
 
         // Assert Expectations
         mockClient.AssertExpectations(t)
+    })
+}
+
+func TestProcessGet(t *testing.T) {
+    t.Run("Success", func(t *testing.T) {
+        // Create a GNMISession
+        session := &GNMISession{}
+
+        // Create a GetResponse with a Notification
+        response := &gnmi.GetResponse{
+            Notification: []*gnmi.Notification{
+                {
+                    Timestamp: 123456789,
+                    Prefix: &gnmi.Path{
+                        Element: []string{"interfaces", "interface", "Ethernet0"},
+                    },
+                    Update: []*gnmi.Update{
+                        {
+                            Path: &gnmi.Path{
+                                Element: []string{"state", "operStatus"},
+                            },
+                            Val: &gnmi.TypedValue{
+                                Value: &gnmi.TypedValue_StringVal{
+                                    StringVal: "UP",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+        // Call ProcessGet and assert the response
+        notifications, err := session.ProcessGet(response)
+        assert.NoError(t, err)
+        assert.Equal(t, response.Notification, notifications)
+    })
+
+    t.Run("Error - response is nil", func(t *testing.T) {
+        // Create a GNMISession
+        session := &GNMISession{}
+
+        // Call ProcessGet with a nil response and assert the error
+        _, err := session.ProcessGet(nil)
+        assert.Error(t, err)
+        assert.Equal(t, errors.New("response is nil"), err)
+    })
+
+    t.Run("Error - no notifications in response", func(t *testing.T) {
+        // Create a GNMISession
+        session := &GNMISession{}
+
+        // Create a GetResponse with no Notifications
+        response := &gnmi.GetResponse{}
+
+        // Call ProcessGet and assert the error
+        _, err := session.ProcessGet(response)
+        assert.Error(t, err)
+        assert.Equal(t, errors.New("no notifications in response"), err)
     })
 }
 

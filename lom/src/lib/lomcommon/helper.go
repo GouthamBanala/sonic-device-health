@@ -124,6 +124,10 @@ func SetPrefix(p string) {
     }
 }
 
+func GetPrefix() string {
+    return apprefix
+}
+
 /* setAgentName is used to set the agent name for all log messages */
 var agentName string
 
@@ -132,6 +136,10 @@ func SetAgentName(a string) {
     if len(a) == 0 {
         agentName = "lom"
     }
+}
+
+func GetAgentName() string {
+    return agentName
 }
 
 func getPrefix(skip int, severityLevel string) string {

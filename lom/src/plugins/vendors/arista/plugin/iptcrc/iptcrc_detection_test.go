@@ -1523,11 +1523,10 @@ func TestProcessGNMINotification(t *testing.T) {
 
         plugin := &IPTCRCDetectionPlugin{}
 
-        a, b, c := plugin.processGNMINotification(nil)
+        a, c := plugin.processGNMINotification(nil)
 
         // assert a as nil, b as nil, c as error Failed to parse gnmi subscription notification
         assert.Nil(t, a)
-        assert.Nil(t, b)
         assert.True(t, strings.HasPrefix(c.Error(), "invalid type for notification"))
     })
 
@@ -1561,11 +1560,10 @@ func TestProcessGNMINotification(t *testing.T) {
             },
         }
 
-        a, b, c := plugin.processGNMINotification(notification)
+        a, c := plugin.processGNMINotification(notification)
 
-        // assert a as nil, b as nil, c as error Failed to parse gnmi subscription notification
+        // assert a as nil, c as error Failed to parse gnmi subscription notification
         assert.Nil(t, a)
-        assert.Nil(t, b)
         assert.True(t, strings.HasPrefix(c.Error(), "prefix not found in parsed notification"))
     })
 
@@ -1609,11 +1607,10 @@ func TestProcessGNMINotification(t *testing.T) {
             },
         }
 
-        a, b, c := plugin.processGNMINotification(notification)
+        a, c := plugin.processGNMINotification(notification)
 
         // assert a as nil, b as nil, c as error Failed to parse gnmi subscription notification
         assert.Nil(t, a)
-        assert.Nil(t, b)
         assert.True(t, strings.HasPrefix(c.Error(), "executeIPTCRCDetection - ignoring prefix"))
     })
 
@@ -1661,11 +1658,10 @@ func TestProcessGNMINotification(t *testing.T) {
             },
         }
 
-        a, b, _ := plugin.processGNMINotification(notification)
+        a, _ := plugin.processGNMINotification(notification)
 
         // assert a as nil, b as nil, c as error Failed to parse gnmi subscription notification
         assert.Nil(t, a)
-        assert.Nil(t, b)
         //assert.True(t, strings.HasPrefix(c.Error(), "executeIPTCRCDetection - ignoring prefix"))
 
         logs := mylogger.GetLogs()
@@ -1795,71 +1791,6 @@ func TestProcessGNMINotification(t *testing.T) {
         iPTCRCDetectionPlugin.Shutdown()
         time.Sleep(2 * time.Second)
         mylogger = nil
-    })
-
-    t.Run("GetSandCounterDeletes API error", func(t *testing.T) {
-        // Create a mock logger to capture the log messages
-        mylogger := &MockLogger{}
-
-        // Create a plugin logger with the mock logger's LogFunc method
-        pluginLogger := plugins_common.NewLogger("test", mylogger.LogFunc)
-
-        // Assign the plugin logger to the plugin
-        logger = pluginLogger
-
-        plugin := &IPTCRCDetectionPlugin{}
-
-        plugin.reportingFreqLimiter = plugins_common.GetDetectionFrequencyLimiter(10, 10, 10)
-
-        notification := &ext_gnmi.Notification{
-            Timestamp: 1234567890,
-            Prefix: &ext_gnmi.Path{
-                Elem: []*ext_gnmi.PathElem{
-                    {Name: "Smash"},
-                    {Name: "hardware"},
-                    {Name: "counter"},
-                    {Name: "internalDrop"},
-                    {Name: "SandCounters"},
-                    {Name: "internalDrop"},
-                },
-            },
-            Delete: []*ext_gnmi.Path{
-                {
-                    Elem: []*ext_gnmi.PathElem{
-                        {Name: "interfaces"},
-                        {Name: "interface"},
-                        {Name: "Ethernet2"},
-                    },
-                },
-                {
-                    Elem: []*ext_gnmi.PathElem{
-                        {Name: "interfaces"},
-                        {Name: "interface"},
-                        {Name: "Ethernet3"},
-                    },
-                },
-            },
-        }
-
-        a, b, _ := plugin.processGNMINotification(notification)
-
-        // assert a as nil, b as nil, c as error Failed to parse gnmi subscription notification
-        assert.Nil(t, a)
-        assert.Nil(t, b)
-        //assert.True(t, strings.HasPrefix(c.Error(), "executeIPTCRCDetection - ignoring prefix"))
-
-        logs := mylogger.GetLogs()
-        fmt.Print("logs: ", logs)
-        pattern1 := regexp.MustCompile(`Failed to get IPTCRC counter deletes from gnmi notification:`)
-        fmt.Println("logs: ", logs)
-        found1 := false
-        for _, log := range logs {
-            if pattern1.MatchString(log) {
-                found1 = true
-            }
-        }
-        assert.True(t, found1, "Expected pattern not found: Failed to get IPTCRC counter deletes from gnmi notification:")
-
     })
 }
 
@@ -2071,6 +2002,62 @@ func TestExecuteShutdown(t *testing.T) {
 
         logger = nil
     })
+
+    t.Run("test shutdown with session closed", func(t *testing.T) {
+        // Create a mock logger to capture the log messages
+        mylogger := &MockLogger{}
+
+        // Create a plugin logger with the mock logger's LogFunc method
+        pluginLogger := plugins_common.NewLogger("test", mylogger.LogFunc)
+
+        // Assign the plugin logger to the plugin
+        logger = pluginLogger
+
+        // create gnmi server
+        certificateFilePath := lomcommon.GetConfigMgr().GetGlobalCfgStr("LOCAL_GNMI_CERTIFICATE_FILE_PATH")
+        privateKeyFilePath := lomcommon.GetConfigMgr().GetGlobalCfgStr("LOCAL_GNMI_PRIVATE_KEY_FILE_PATH")
+        caCertificateFilePath := lomcommon.GetConfigMgr().GetGlobalCfgStr("LOCAL_GNMI_CA_CERTIFICATE_FILE_PATH")
+
+        server := arista_common.NewGNMITestServer()
+        if err := server.Start(":50051", certificateFilePath, privateKeyFilePath, caCertificateFilePath); err != nil {
+            t.Fatalf("Failed to start GNMI server: %v", err)
+        }
+        defer server.Stop()
+
+        // create plugin
+        iPTCRCDetectionPlugin := IPTCRCDetectionPlugin{}
+
+        // define config
+        actionKnobs := json.RawMessage(`{
+            "initial_detection_reporting_frequency_in_mins": 1,
+            "subsequent_detection_reporting_frequency_in_mins": 1,
+            "initial_detection_reporting_max_count": 12
+        }`)
+
+        actionConfig := lomcommon.ActionCfg_t{HeartbeatInt: 10,
+            ActionKnobs: actionKnobs,
+            Name:        "iptcrc_detection",
+            Type:        "Detection",
+            Timeout:     0,
+            Disable:     false,
+            Mimic:       false,
+        }
+
+        // call init
+        err := iPTCRCDetectionPlugin.Init(&actionConfig)
+        assert.NoError(t, err)
+
+        iPTCRCDetectionPlugin.aristaGnmiSession, err = plugins_common.NewGNMISession(nil, nil, nil)
+        if err != nil {
+            t.Errorf("Failed to create arista gnmi server session : %v", err)
+        }
+        iPTCRCDetectionPlugin.sessionValid = true
+
+        // first time shutdown
+        iPTCRCDetectionPlugin.executeShutdown()
+        iPTCRCDetectionPlugin.sessionValid = true
+        iPTCRCDetectionPlugin.executeShutdown()
+    })
 }
 
 // TestExecuteIPTCRCDetection tests the executeIPTCRCDetection function
@@ -2182,13 +2169,8 @@ func TestExecuteIPTCRCDetection(t *testing.T) {
         // Assert that the Resubscribe and Receive methods were called
         assert.False(t, plugin.sessionValid)
     })
-}
 
-// Test for checkForClearedErrors
-func TestCheckForClearedErrors(t *testing.T) {
-
-    t.Run("", func(t *testing.T) {
-
+    t.Run("test executeIPTCRCDetection", func(t *testing.T) {
         // Create a mock logger to capture the log messages
         mylogger := &MockLogger{}
 
@@ -2211,10 +2193,11 @@ func TestCheckForClearedErrors(t *testing.T) {
 
         // define config
         actionKnobs := json.RawMessage(`{
-        "initial_detection_reporting_frequency_in_mins": 1,
-        "subsequent_detection_reporting_frequency_in_mins": 1,
-        "initial_detection_reporting_max_count": 12
-    }`)
+               "initial_detection_reporting_frequency_in_mins": 1,
+               "subsequent_detection_reporting_frequency_in_mins": 1,
+               "initial_detection_reporting_max_count": 12,
+               "chipid_name_mappings_file": "../../plugin_integration_tests/config/chipid_name_mappings.json"
+           }`)
 
         actionConfig := lomcommon.ActionCfg_t{HeartbeatInt: 10,
             ActionKnobs: actionKnobs,
@@ -2225,30 +2208,69 @@ func TestCheckForClearedErrors(t *testing.T) {
             Mimic:       false,
         }
 
-        // Initialize an IPTCRCDetectionPlugin with a runningChipDataMap and a mock reportingFreqLimiter
-        iptCRCDetectionPlugin := IPTCRCDetectionPlugin{}
+        // create plugin
+        iPTCRCDetectionPlugin := IPTCRCDetectionPlugin{}
 
         // call init
-        err := iptCRCDetectionPlugin.Init(&actionConfig)
+        err := iPTCRCDetectionPlugin.Init(&actionConfig)
         assert.NoError(t, err)
 
-        iptCRCDetectionPlugin.runningChipDataMap = map[string]*arista_common.LCChipData{
-            "chip1": &arista_common.LCChipData{},
-            "chip2": &arista_common.LCChipData{},
+        //generate and send subscription9IPTCRC error) to client
+        var sample_1 = map[string]interface{}{
+            "key_details": "0_fap_1_65535", //chipId_chipType_CounterId_offset
+            "Timestamp":   "1702436651320833298",
+            "Updates": map[string]interface{}{
+                "chipName":                  "Jericho3/0",
+                "delta2":                    "4294967295",
+                "initialThresholdEventTime": "0.000000",
+                "lastSyslogTime":            "0.000000",
+                "initialEventTime":          "1702436441.269680",
+                "lastEventTime":             "1702436441.269680",
+                "lastThresholdEventTime":    "0.000000",
+                "counterName":               "IptCrcErrCnt",
+                "dropCount":                 "1",
+                "delta1":                    "0",
+                "delta4":                    "4294967295",
+                "chipId":                    "0",
+                "chipType":                  "fap",
+                "counterId":                 "1",
+                "offset":                    "65535",
+                "delta3":                    "4294967295",
+                "delta5":                    "4294967295",
+                "eventCount":                "1",
+                "thresholdEventCount":       "0",
+            },
         }
+        server.UpdateDB("sample1_key", sample_1) // sends IPTCRC anomaly to client
 
-        // Call checkForClearedErrors
-        iptCRCDetectionPlugin.checkForClearedErrors([]string{"chip1"})
+        // Create a context with a cancel function
+        ctx, cancel := context.WithCancel(context.Background())
 
-        // Assert that chip1 was removed from runningChipDataMap
-        _, ok := iptCRCDetectionPlugin.runningChipDataMap["chip1"]
-        assert.False(t, ok)
+        // Cancel the context
+        cancel()
 
-        // cleanup
-        iptCRCDetectionPlugin.Shutdown()
-        time.Sleep(3 * time.Second)
-        //server.Stop()
-        logger = nil
+        isExecutionHealthy := true
+        iPTCRCDetectionPlugin.executeIPTCRCDetection(nil, &isExecutionHealthy, ctx)
+        fmt.Println(iPTCRCDetectionPlugin.sessionValid)
 
+        // Assert that the Resubscribe and Receive methods were called
+        assert.False(t, iPTCRCDetectionPlugin.sessionValid)
+
+        logs := mylogger.GetLogs()
+        fmt.Print("logs: ", logs)
+        pattern1 := regexp.MustCompile(`Aborting processing updates`)
+        fmt.Println("logs: ", logs)
+        found1 := false
+        for _, log := range logs {
+            if pattern1.MatchString(log) {
+                found1 = true
+            }
+        }
+        assert.True(t, found1, "Expected pattern not found: Aborting processing updates")
+
+        //cleanup
+        iPTCRCDetectionPlugin.Shutdown()
+        time.Sleep(2 * time.Second)
+        mylogger = nil
     })
 }
