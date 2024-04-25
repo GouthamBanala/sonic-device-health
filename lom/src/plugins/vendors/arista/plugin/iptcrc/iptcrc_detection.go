@@ -201,13 +201,14 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
 
     // process the gnmi get response to get the IPTCRC counter details
     notifications, err := iptCRCDetectionPlugin.aristaGnmiSession.ProcessGet(response)
-    fmt.Printf("response: %v\n", response)
     if err != nil {
         logger.LogError("Failed to process gnmi get response: %v", err)
         *isExecutionHealthy = false
         return nil
     }
+
     *isExecutionHealthy = true
+
     // process gnmi notification to extract the IPTCRC error details
     for _, notification := range notifications {
         select {
@@ -217,7 +218,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
         default:
         }
 
-        chipsWithIPTCRCErrorToReport, chipsWithIPTCRCErrorToDelete, err := iptCRCDetectionPlugin.processGNMINotification(notification)
+        chipsWithIPTCRCErrorToReport, err := iptCRCDetectionPlugin.processGNMINotification(notification)
         if err != nil {
             logger.LogError("Failed to process gnmi subscription notification: %v", err)
             continue
@@ -240,14 +241,6 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeIPTCRCDetection(reque
             // report the rest of the anomalies in the next call. Need to check if this is the expected behavior.
             return res
         }
-
-        // Delete the anomaly if there are any chips with IPTCRC error to be cleared
-        if len(chipsWithIPTCRCErrorToDelete) > 0 {
-            logger.LogInfo("IPTCRCDetection Anomaly Cleared")
-            logger.LogInfo("Chips with IPTCRC error cleared: %v", chipsWithIPTCRCErrorToDelete)
-
-            iptCRCDetectionPlugin.checkForClearedErrors(chipsWithIPTCRCErrorToDelete)
-        }
     }
     return nil
 }
@@ -262,27 +255,6 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) reportAnomalies(request *lom
 }
 
 /*
- * checkForClearedErrors checks for any previously reported anomalies that are no longer present in the current reported ones.
- * It iterates over the provided list of chips with IPTCRC errors and removes any matching entries from the runningChipDataMap.
- * It also deletes the corresponding entry from the reporting frequency limiter cache.
- *
- * Parameters:
- * - chipsWithIPTCRCError: A slice of strings. Each string is the name of a chip with an IPTCRC error.
- *
- * Returns: None
- */
-func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) checkForClearedErrors(chipsWithIPTCRCError []string) {
-    for _, chipId := range chipsWithIPTCRCError {
-        if _, ok := iptCRCDetectionPlugin.runningChipDataMap[chipId]; ok {
-            // This chip is in the list of chips with IPTCRC error to be cleared
-            delete(iptCRCDetectionPlugin.runningChipDataMap, chipId)
-            // reset limiter freq when detection is false.
-            iptCRCDetectionPlugin.reportingFreqLimiter.DeleteCache(chipId)
-        }
-    }
-}
-
-/*
  * processGNMINotification processes a GNMI notification and returns a list of chips with IPTCRC errors.
  *
  * Parameters:
@@ -292,26 +264,25 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) checkForClearedErrors(chipsW
  * - A slice of strings. Each string is the ID  of a chip with an IPTCRC error to be reported.
  * - An error. This is nil if the function completed successfully and non-nil if an error occurred.
  */
-func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(notification interface{}) ([]string, []string, error) {
+func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(notification interface{}) ([]string, error) {
     // process gnmi notification
     parsedNotification, err := plugins_common.ParseNotification(notification)
     if err != nil {
         logger.LogError("Failed to parse gnmi subscription notification: %v", err)
-        return nil, nil, err
+        return nil, err
     }
 
     // get the prefix from the notification
     vprefix, err := plugins_common.GetPrefix(parsedNotification)
     if err != nil {
         logger.LogError("Failed to get prefix from gnmi notification: %v", err)
-        return nil, nil, err
+        return nil, err
     }
     vprefixStr := "/" + strings.Join(vprefix, "/")
 
-    // path notification can be 3 types
+    // path notification for get can be 2 types
     // 1. standard gnmi path update notification for sand_counters_gnmi_path
-    // 2. standard gnmi path delete notification for sand_counters_gnmi_path
-    // 3. standard gnmi path update notification for sand_counters_gnmi_path with prefix ending in _counts.
+    // 2. standard gnmi path update notification for sand_counters_gnmi_path with prefix ending in _counts.
     // This is a special case for arista switches which gives the no of entries in the table.
     notificationType := plugins_common.CheckNotificationType(parsedNotification)
 
@@ -326,7 +297,7 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
             counterDetailsMap, err := arista_common.GetSandCounterUpdates(parsedNotification, iptCRCDetectionPlugin.counterName)
             if err != nil {
                 logger.LogError("Failed to get IPTCRC counter updates from gnmi notification: %v", err)
-                return nil, nil, err
+                return nil, err
             }
 
             // Stores the list of chipId's with IPTCRC error to be reported
@@ -358,29 +329,11 @@ func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) processGNMINotification(noti
                     continue
                 }
             }
-            return chipsWithIPTCRCErrorToReport, nil, nil
-        } else if notificationType == "delete" {
-            // process gnmi delete notification
-
-            // parse the notification deletes to get the IPTCRC counter details
-            counterDetailsMap, err := arista_common.GetSandCounterDeletes(parsedNotification, iptCRCDetectionPlugin.counterName)
-            if err != nil {
-                logger.LogError("Failed to get IPTCRC counter deletes from gnmi notification: %v", err)
-                return nil, nil, err
-            }
-
-            // Stores the list of chipId's with IPTCRC error to be cleared
-            var chipsWithIPTCRCErrorToClear []string
-
-            // map keys are the chipId's with IPTCRC error to be cleared
-            for chipId := range counterDetailsMap {
-                chipsWithIPTCRCErrorToClear = append(chipsWithIPTCRCErrorToClear, chipId)
-            }
-            return nil, chipsWithIPTCRCErrorToClear, nil
+            return chipsWithIPTCRCErrorToReport, nil
         }
     }
 
-    return nil, nil, fmt.Errorf("executeIPTCRCDetection - ignoring prefix: %s", vprefixStr)
+    return nil, fmt.Errorf("executeIPTCRCDetection - ignoring prefix: %s", vprefixStr)
 }
 
 func (iptCRCDetectionPlugin *IPTCRCDetectionPlugin) executeShutdown() error {

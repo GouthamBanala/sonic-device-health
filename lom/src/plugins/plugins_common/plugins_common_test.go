@@ -3,6 +3,8 @@ package plugins_common
 import (
     "fmt"
     "log/syslog"
+    "lom/src/lib/lomcommon"
+    "lom/src/lib/lomipc"
     "sync"
     "testing"
     "time"
@@ -175,4 +177,31 @@ func Test_PluginLogger(t *testing.T) {
         assert.Equal(expectedMessage, receivedMessage)
         assert.Equal(expectedPriority, receivedPriority)
     })
+}
+
+type MockPlugin struct{}
+
+func (m *MockPlugin) Init(actionCfg *lomcommon.ActionCfg_t) error { return nil }
+func (m *MockPlugin) Request(hbchan chan PluginHeartBeat, request *lomipc.ActionRequestData) *lomipc.ActionResponseData {
+    return nil
+}
+func (m *MockPlugin) Shutdown() error       { return nil }
+func (m *MockPlugin) GetPluginID() PluginId { return PluginId{} }
+
+func MockPluginConstructor(args ...interface{}) Plugin {
+    return &MockPlugin{}
+}
+
+func TestRegisterPlugin(t *testing.T) {
+    // Register a mock plugin
+    RegisterPlugin("mock", MockPluginConstructor)
+
+    // Assert that the plugin was registered
+    constructor, exists := PluginConstructors["mock"]
+    assert.True(t, exists, "Expected plugin to be registered")
+
+    // Assert that the constructor is the correct function
+    plugin := constructor()
+    _, ok := plugin.(*MockPlugin)
+    assert.True(t, ok, "Expected constructor to return a MockPlugin")
 }
