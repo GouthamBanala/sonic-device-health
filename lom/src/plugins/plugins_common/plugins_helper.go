@@ -4,11 +4,8 @@ package plugins_common
 import (
     "container/list"
     "context"
-    "fmt"
     "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
-    "math"
-    "math/rand"
     "sync"
     "sync/atomic"
     "time"
@@ -469,6 +466,8 @@ func GetResponse(request *lomipc.ActionRequestData, anomalyKey string, response 
 }
 
 /*
+
+/*
  * This utility is designed for subscription-based plugins that need to detect anomalies triggered by GNMI subscriptions.
  * The utility manages the execution of detection logic when a subscription request is received and handles the shutdown of the request when the plugin is shut down.
  * If a detection plugin uses this utility as a field in its struct, the Request and Shutdown methods from this utility are promoted to the plugin.
@@ -486,7 +485,7 @@ func GetResponse(request *lomipc.ActionRequestData, anomalyKey string, response 
  * The utility publishes a heartbeat at a configurable interval. If a certain number of consecutive errors occur, the heartbeat is skipped.
  *
  * The utility provides several custom error types to handle different error conditions, such as subscription errors, receive errors, shutdown errors, etc.
- */
+
 
 // SubscribeError represents an error that occurred while subscribing to GNMI paths.
 type SubscribeError struct {
@@ -571,7 +570,7 @@ NotifyAsHealthySubscription resets the counter of consecutive errors.
 
 This function should be called from plugin when a successful subscription detection occurs to indicate
 that the plugin is healthy.
-*/
+
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) NotifyAsHealthySubscription() {
     subscriptionBasedPluginUtil.numOfConsecutiveErrors.Store(0)
 }
@@ -588,7 +587,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) NotifyAsHealthyS
  *
  * Returns:
  * - An error. This is nil if the function completed successfully and non-nil if an error occurred.
- */
+
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Init(pluginName string, actionConfig *lomcommon.ActionCfg_t,
     requestFunction func(*lomipc.ActionRequestData, context.Context, bool) (*lomipc.ActionResponseData, error), shutDownFunction func() error,
     pluginLogger *PluginLogger, backoffTimeSecs int) error {
@@ -612,7 +611,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Init(pluginName 
     }
 
     subscriptionBasedPluginUtil.heartBeatIntervalInSecs = actionConfig.HeartbeatInt
-    /* Size of responseChannel should be 2, so that the go routine handling request can be terminated on shutdown if the Request method has already terminated. */
+    // Size of responseChannel should be 2, so that the go routine handling request can be terminated on shutdown if the Request method has already terminated.
     subscriptionBasedPluginUtil.responseChannel = make(chan *lomipc.ActionResponseData, 2)
     subscriptionBasedPluginUtil.requestFunc = requestFunction
     subscriptionBasedPluginUtil.shutdownFunc = shutDownFunction
@@ -637,7 +636,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Init(pluginName 
  *
  * Returns:
  * - A pointer to an ActionResponseData struct. This is the response to the request.
- */
+
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Request(hbchan chan PluginHeartBeat, request *lomipc.ActionRequestData) *lomipc.ActionResponseData {
 
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Started Request() for (%s)", subscriptionBasedPluginUtil.PluginName)
@@ -698,7 +697,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Request(hbchan c
  * Otherwise, the function creates a PluginHeartBeat struct and sends it on the hbchan channel.
  *
  * This function does not return a value.
- */
+
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) publishHeartBeat(hbchan chan PluginHeartBeat) {
     numConsecutiveErrors := subscriptionBasedPluginUtil.numOfConsecutiveErrors.Load()
 
@@ -707,7 +706,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) publishHeartBeat
         return
     }
 
-    /* Publish heartbeat only after above validations pass.*/
+    // Publish heartbeat only after above validations pass.
     pluginHeartBeat := PluginHeartBeat{PluginName: subscriptionBasedPluginUtil.PluginName, EpochTime: time.Now().Unix()}
     hbchan <- pluginHeartBeat
 }
@@ -721,7 +720,7 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) publishHeartBeat
  * The function initializes a backoffTimeSecs timer and a flag to indicate if the connection to the gnmi server needs to be restarted.
  *
  * This function does not return a value.
- */
+
 // To-Do : Goutham : Optimize this. Check if restartConnection flag is needed or not.
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) handleRequest(request *lomipc.ActionRequestData) {
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Subscription handler initialized for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
@@ -817,7 +816,7 @@ loop:
  *
  * Returns:
  * - An error. This is always nil, as the function does not perform any operations that can fail.
- */
+
 func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Shutdown() error {
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Shutdown called for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
 
@@ -832,3 +831,4 @@ func (subscriptionBasedPluginUtil *SubscriptionBasedPluginUtil) Shutdown() error
     subscriptionBasedPluginUtil.pluginLogger.LogInfo("Shutdown successful for plugin (%s)", subscriptionBasedPluginUtil.PluginName)
     return nil
 }
+*/

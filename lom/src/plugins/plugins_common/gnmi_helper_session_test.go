@@ -169,7 +169,9 @@ func InitConfigMgrDefault() {
         BindingsFl: bindingsPath,
         ProcsFl:    procsPath,
     }
-    lomcommon.InitConfigMgr(configFiles)
+    if _, err := lomcommon.InitConfigMgr(configFiles); err != nil {
+        log.Fatalf("Failed to init config (%v)", err)
+    }
 }
 
 // INitialize the config manager with custom config files
@@ -192,7 +194,9 @@ func InitConfigMgr(actionsData, bindingsData, procsData, globalsData []byte) {
         BindingsFl: bindingsPath,
         ProcsFl:    procsPath,
     }
-    lomcommon.InitConfigMgr(configFiles)
+    if _, err := lomcommon.InitConfigMgr(configFiles); err != nil {
+        log.Fatalf("Failed to init config (%v)", err)
+    }
 }
 
 //------------------------ Tests ---------------------------------
