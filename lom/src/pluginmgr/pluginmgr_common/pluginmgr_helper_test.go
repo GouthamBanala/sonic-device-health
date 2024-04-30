@@ -2133,7 +2133,10 @@ func Test_LoadAddPlugin(t *testing.T) {
         BindingsFl: "../../lib/libtest/config/bindings.conf.json",
         ProcsFl:    "../../lib/libtest/config/procs.conf.json",
     }
-    lomcommon.InitConfigMgr(cfgFiles)
+
+    if _, err := lomcommon.InitConfigMgr(cfgFiles); err != nil {
+        t.Fatalf("Failed to init config (%v)", err)
+    }
 
     t.Run("TestLoadAddPlugin 1", func(t *testing.T) {
         logger := setup()

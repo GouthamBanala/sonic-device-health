@@ -3,6 +3,7 @@ package plugins_common
 import (
     "context"
     "fmt"
+    "log"
     "lom/src/lib/lomcommon"
     "lom/src/lib/lomipc"
     "testing"
@@ -17,7 +18,9 @@ func init() {
     configFiles.ActionsFl = "../../lib/libtest/config/actions.conf.json"
     configFiles.BindingsFl = "../../lib/libtest/config/actions.conf.json"
     configFiles.ProcsFl = "../../lib/libtest/config/procs.conf.json"
-    lomcommon.InitConfigMgr(configFiles)
+    if _, err := lomcommon.InitConfigMgr(configFiles); err != nil {
+        log.Fatalf("Failed to init config (%v)", err)
+    }
 }
 
 /* Validate that reportingLimiter reports successfuly for first time for an anomaly key */
