@@ -1,0 +1,29 @@
+{
+    "VENDOR": "Arista",
+    "MAX_SEQ_TIMEOUT_SECS": 120,
+    "MIN_PERIODIC_LOG_PERIOD_SECS": 1,
+    "ENGINE_HB_INTERVAL_SECS": 10,
+
+    "INITIAL_DETECTION_REPORTING_FREQ_IN_MINS": 5,
+    "SUBSEQUENT_DETECTION_REPORTING_FREQ_IN_MINS": 60,
+    "INITIAL_DETECTION_REPORTING_MAX_COUNT": 12,
+    "PLUGIN_MIN_ERR_CNT_TO_SKIP_HEARTBEAT" : 3, 
+    
+    "MAX_PLUGIN_RESPONSES" : 100,
+    "MAX_PLUGIN_RESPONSES_WINDOW_TIMEOUT_IN_SECS" : 60,
+
+    "LOCAL_GNMI_SERVER_USERNAME": "admin",
+	"LOCAL_GNMI_SERVER_PASSWORD": "password",
+	"LOCAL_GNMI_SERVER_ADDRESS": "localhost:50051",            
+    "LOCAL_GNMI_USE_TLS" : "true",
+    "LOCAL_GNMI_CERTIFICATE_FILE_PATH" : "/mnt/flash/goutham/certs_new/streamingtelemetryserver.cer",
+    "LOCAL_GNMI_PRIVATE_KEY_FILE_PATH" : "/mnt/flash/goutham/certs_new/streamingtelemetryserver.key",
+    "LOCAL_GNMI_CA_CERTIFICATE_FILE_PATH" : "/mnt/flash/goutham/certs_new/dsmsroot.cer",
+    "LOCAL_GNMI_VALIDATE_SERVER_CERTIFICATE" : "false"    ,
+
+    "ARISTA_INSTALLATION_CHECK_AGENT_UPTIMES" : "true",
+    "ARISTA_INSTALLATION_CHECK_CORE_DUMP" : "false",
+    "ARISTA_INSTALLATION_CHECK_CAPACITY" : "true",
+
+    "SYSLOG_FACILITY_LEVEL" : "LOG_LOCAL4"
+}       
