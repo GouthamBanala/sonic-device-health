@@ -1,0 +1,11 @@
+{
+	"procs": {
+		"proc_0": {
+			"iptcrc_detection": {
+				"name": "iptcrc_detection",
+				"version": "1.0.0.0",
+				"path": ""
+			}
+		}
+	}
+}

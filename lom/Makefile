@@ -80,7 +80,7 @@ VENDOR_DIR := vendor
 LIB_DIR := $(BUILD_DIR)/lib
 BIN_DIR := $(BUILD_DIR)/bin
 TEST_DIR := $(BUILD_DIR)/test
-INTEGRATION_TEST_DIR := integration_test
+INTEGRATION_TEST_DIR := integration_test/$(BUILD_PLATFORM)
 BUILD_SRC_DIR := $(BUILD_DIR)/src
 SRC_DIR := src
 CONFIG_DIR := config
@@ -275,7 +275,7 @@ COMMON_DEPS := prepare_temp_src update_import_statements update_imports_path for
 COMMON_DEPS_TEST := $(LIB_TEST) $(ENGINE_TEST) $(PLUGIN_MANAGER_TEST) $(PLUGINS_COMMON_TEST) $(PY_TEST) $(GNMI_SERVER_TEST)
 
 SONIC_DEPS := $(SONIC_DBCLIENT_TEST) $(SONIC_LINK_CRC_TEST) $(SONIC_LINK_CRC_MOCKER_TEST) $(INTEGRATION_TEST_BIN)
-ARISTA_DEPS := $(ARISTA_COMMON_TEST) $(ARISTA_IPTCRC_TEST) $(ARISTA_INSTALLER) 
+ARISTA_DEPS := $(ARISTA_COMMON_TEST) $(ARISTA_IPTCRC_TEST) $(ARISTA_INSTALLER) $(INTEGRATION_TEST_BIN)
 
 ifeq ($(BUILD_PLATFORM), sonic)
 	BUILD_DEPS := $(SONIC_DEPS)
@@ -449,7 +449,7 @@ $(SONIC_LINK_CRC_MOCKER_TEST): $(SRC_FILES)
 	$(call build_golang,$@,lom/build/src/plugins/vendors/sonic/plugin_integration_tests/linkcrc_mocker,)
 	@echo -e "Successfully completed Sonic linkcrc Integration test Mocker\n\n"
 
-# Integration test for sonic plugins
+# Integration tests
 $(INTEGRATION_TEST_BIN): 
 	$(INTEGRATION_TEST_DIR)/src/build.sh build $(INTEGRATION_TEST_BIN)
 	@echo -e "Successfully completed packaging Integration tests\n\n"

@@ -35,7 +35,7 @@ if [ "$1" == "build" ]; then
     mkdir -p build/integration_test/bin
 
     # copy all content in integration_test to build directory
-    cp -R integration_test/* build/integration_test/
+    cp -R integration_test/sonic/* build/integration_test/
 
     # Copy new files from 'build/bin' to 'integration_test/bin'
     cp -R build/bin/* build/integration_test/bin/

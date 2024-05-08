@@ -1,0 +1,12 @@
+{
+	"bindings": [{
+		"SequenceName": "iptcrc_bind-0",
+		"Priority": 0,
+		"Timeout": 30,
+		"Actions": [{
+				"name": "iptcrc_detection",
+				"sequence": 0
+			}
+		]
+	}]
+}
